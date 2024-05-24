@@ -1,6 +1,8 @@
 
 # Folders
 data/
+test_files/
+temp/ 
 cache/
 .vscode/
 
