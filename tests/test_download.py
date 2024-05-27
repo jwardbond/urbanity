@@ -60,6 +60,17 @@ class DownloadOSMNetwork(unittest.TestCase):
         self.networkpath = Path("./tests/test_files/test_files_road_network.geojson")
         self.networkpath.unlink(missing_ok=True)  # delete existing files
 
+    def test_download_from_polygon(self):
+        networkpath = self.networkpath
+        boundary = self.boundary
+
+        network = ud.download_osm_network(boundary, savepath=networkpath.parent)
+
+        # Test that the output file exists
+        self.assertTrue(networkpath.exists())
+
+        # The rest of the functionality is tested in DownloadOSMNetwork.test_download_from_file
+
     def test_download_from_file(self):
         networkpath = self.networkpath
         boundarypath = self.boundarypath
@@ -69,14 +80,8 @@ class DownloadOSMNetwork(unittest.TestCase):
         # Test that the output file exists
         self.assertTrue(networkpath.exists())
 
-    def test_download_from_polygon(self):
-        networkpath = self.networkpath
-        boundary = self.boundary
-
-        network = ud.download_osm_network(boundary, savepath=networkpath.parent)
-
-        # Test that the output file exists
-        self.assertTrue(networkpath.exists())
+        # Test that the crs is correct
+        self.assertEqual(network.crs, "EPSG:4326")
 
     def test_download_error(self):
         boundary = "East York, Toronto"

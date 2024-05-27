@@ -47,11 +47,11 @@ def download_osm_network(
     The coordinate system is WGS84 / EPSG:4326
 
     Args:
-        location (str): The region to geocode to get the road network. e.g. "Toronto, Ontario, Canada"
+        polygon (PurePath, shapely.Polygon): The path to the saved polygon, or the polygon itself.
         savepath (pathlib.PurePath, optional): Save location for downloaded polygon. Defaults to None (not saving)
 
     Returns:
-        geojson: The road network as a geojson list of edges in WGS84 / EPSG:4326
+        geopandas: The road network as a geojson list of edges in WGS84 / EPSG:4326
     """
 
     # Parse polygon if required
@@ -69,13 +69,11 @@ def download_osm_network(
     _, gdf = ox.convert.graph_to_gdfs(M)
 
     # Save and return
-    output = gdf.to_json()
-
     if savepath:
         filepath = savepath / (savepath.stem + "_road_network.geojson")
-        filepath.write_text(output)
+        filepath.write_text(gdf.to_json())
 
-    return output
+    return gdf
 
 
 def download_rsi(boundary_path: PurePath):  # TODO
@@ -94,4 +92,4 @@ if __name__ == "__main__":
     savepath = Path(args.savepath)
     savepath.mkdir(exist_ok=True)
 
-    download_osm_network("Kingston, Ontario", savepath)
+    download_osm_network(savepath / (savepath.stem + "_boundary.geojson"), savepath)
