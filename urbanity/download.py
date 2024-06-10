@@ -23,7 +23,7 @@ def download_osm_boundary(query: str, savepath: PurePath = None):
 
     Args:
         query (str): The region to geocode to get the bounding polygon. Can be place name or address]
-        savepath (pathlib.PurePath, optional): Save location for downloaded polygon. Defaults to None (not saving)
+        savepath (pathlib.PurePath, optional): Save folder for downloaded polygon. Defaults to None (not saving)
 
     Returns:
         shapely.geometry.polygon.Polygon: A shapely polygon representing the boundary of the queried region in EPSG:4326
@@ -57,7 +57,7 @@ def download_osm_network(
         savepath (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
 
     Returns:
-        geopandas: The road network as a geojson list of edges in WGS84 / EPSG:4326
+        geopandas.GeoDataframe: The road network as a geojson list of edges in WGS84 / EPSG:4326
     """
 
     # Parse polygon if required
@@ -91,7 +91,7 @@ def download_osm_buildings(
         savepath (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
 
     Returns:
-        geopandas: A geodataframe of all buildings within the provided boundary in WGS84 / EPSG:4326
+        geopandas.GeoDataframe: A geodataframe of all buildings within the provided boundary in WGS84 / EPSG:4326
     """
 
     # Parse polygon if required
@@ -131,7 +131,7 @@ def download_osm_generic(
         savename (str): name to append to saved geojson
 
     Returns:
-        geopandas: A geodataframe of all features within the provided boundary in WGS84 / EPSG:4326
+        geopandas.GeoDataframe: A geodataframe of all features within the provided boundary in WGS84 / EPSG:4326
     """
 
     # Parse polygon if required
@@ -145,6 +145,9 @@ def download_osm_generic(
         gdf = ox.features_from_polygon(polygon, tags=tags)
 
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
+
+    # Remove any point geometries
+    gdf = gdf[gdf["geometry"].geom_type != "Point"]
 
     # Save and return
     if savepath:
