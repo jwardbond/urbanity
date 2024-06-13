@@ -28,8 +28,6 @@ def download_osm_boundary(query: str, savepath: PurePath = None):
     Returns:
         shapely.geometry.polygon.Polygon: A shapely polygon representing the boundary of the queried region in EPSG:4326
     """
-    print(savepath)
-
     print(f"Downloading boundaries for {query} from OSM...", end=" ")
     gdf_place = ox.geocoder.geocode_to_gdf(query)
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
@@ -39,8 +37,6 @@ def download_osm_boundary(query: str, savepath: PurePath = None):
     if savepath:
         filepath = savepath / (savepath.stem + "_boundary.geojson")
         filepath.write_text(shapely.to_geojson(polygon))
-
-    print(savepath, 3)
 
     return polygon
 

@@ -8,11 +8,13 @@ from genregion import generate_regions
 
 import utils
 
+#
+
 
 def segment(
     network: PurePath | gpd.GeoDataFrame,
     show: bool = False,
-    save: int = True,
+    savepath: PurePath = None,
     grid_size: int = 1024,
     area_thres: int = 10000,
     width_thres: int = 20,
@@ -39,12 +41,12 @@ def segment(
     """
     # Load and convert to EPSG:3587
     if isinstance(network, PurePath):
-        gdf = gpd.read_file(network)
+        network = gpd.read_file(network)
     elif not isinstance(network, gpd.GeoDataFrame):
-        TypeError(f"Expected PurePath or GeoDataFrame, got {type(gdf)} instead.")
+        TypeError(f"Expected PurePath or GeoDataFrame, got {type(network)} instead.")
 
-    gdf = gdf.to_crs("EPSG:3587")
-    edges = gdf["geometry"].to_list()
+    network = network.to_crs("EPSG:3587")
+    edges = network["geometry"].to_list()
 
     # Extract polygons
     print("Segmenting road network...")
@@ -63,22 +65,24 @@ def segment(
     polygons = polygons.to_crs("EPSG:4326")
 
     # Save and plot
-    savepath = network_path.parents[0]
+    if savepath:
+        filepath = savepath / (savepath.stem + "_segments.geojson")
+        filepath.write_text(polygons.to_json())
 
     if show:
         colors = [tuple(np.random.uniform(0, 1, 3)) for _ in urban_regions]
         polygons.plot(color=colors)
 
-        if save:
+        if savepath:
             plt.savefig(savepath / (savepath.stem + "_segments.png"))
 
         plt.show()
 
-    if save:
-        filepath = savepath / (savepath.stem + "_segments.geojson")
-        filepath.write_text(polygons.to_json())
+    output = gpd.GeoDataFrame(geometry=polygons)
+    output["id"] = output.index
+    output = output[["id", "geometry"]]
 
-    return polygons
+    return output
 
 
 if __name__ == "__main__":
