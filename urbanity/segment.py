@@ -1,9 +1,7 @@
 from pathlib import Path, PurePath
 import argparse
 
-import numpy as np
 import geopandas as gpd
-import matplotlib.pyplot as plt
 from genregion import generate_regions
 
 import utils
