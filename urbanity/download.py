@@ -8,7 +8,6 @@ import shapely
 import osmnx as ox
 import numpy as np
 import geopandas as gpd
-from matplotlib import pyplot as plt
 
 import utils
 
@@ -75,8 +74,8 @@ def download_osm_network(
 
     # Save and return
     if savepath:
-        filepath = savepath / (savepath.stem + "_road_network.geojson")
-        filepath.write_text(network.to_json())
+        savepath = savepath / (savepath.stem + "_road_network.geojson")
+        utils.save_geodf_with_prompt(network, savepath)
 
     network.insert(loc=0, column="id", value=network.index)
 
@@ -124,8 +123,8 @@ def download_osm_buildings(
 
     # Save and return
     if savepath:
-        filepath = savepath / (savepath.stem + "_osm_buildings.geojson")
-        filepath.write_text(buildings.to_json())
+        savepath = savepath / (savepath.stem + "_osm_buildings.geojson")
+        utils.save_geodf_with_prompt(buildings, savepath)
 
     buildings.insert(loc=0, column="id", value=buildings.index)
 
@@ -171,8 +170,8 @@ def download_osm_generic(
 
     # Save and return
     if savepath:
-        filepath = savepath / (savepath.stem + f"_osm_{savename}.geojson")
-        filepath.write_text(gdf.to_json())
+        savepath = savepath / (savepath.stem + f"_osm_{savename}.geojson")
+        utils.save_geodf_with_prompt(gdf, savepath)
 
     return gdf
 

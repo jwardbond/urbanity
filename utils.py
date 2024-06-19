@@ -1,9 +1,9 @@
 import os
 import sys
-import pathlib
+from pathlib import PurePath
+
 import numpy as np
 import geopandas as gpd
-from pathlib import PurePath
 
 
 class PrintColors:
@@ -18,10 +18,6 @@ class PrintColors:
     UNDERLINE = "\033[4m"
 
 
-def geojson_to_dataframe(path: pathlib.PurePath):
-    pass
-
-
 def input_to_geodf(
     x: gpd.geodataframe.GeoDataFrame | gpd.geoseries.GeoSeries | PurePath,
 ):
@@ -30,6 +26,7 @@ def input_to_geodf(
         x = gpd.read_file(x)
         x.set_crs("EPSG:4326", allow_override=False)
         x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
+        x = x.fillna(value=np.nan)
     elif not (
         isinstance(x, gpd.geodataframe.GeoDataFrame)
         or isinstance(x, gpd.geoseries.GeoSeries)
@@ -37,6 +34,21 @@ def input_to_geodf(
         raise TypeError(f"Expected geodataframe or path to geojson, got {type(x)}")
 
     return x
+
+
+def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: PurePath):
+    if savepath.exists():  # then prompt for overwrite
+        prompt_success = False
+        while not prompt_success:
+            overwrite = str(input(f"Overwriting {savepath}. Proceed? (Y/N)"))
+            if overwrite == "Y" or overwrite == "y":
+                prompt_success = True
+                savepath.write_text(x.to_json())
+            elif overwrite == "N" or overwrite == "n":
+                prompt_success = True
+                sys.exit("Exiting")
+    else:  # save new file
+        savepath.write_text(x.to_json())
 
 
 class HiddenPrints:
@@ -49,17 +61,3 @@ class HiddenPrints:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._origina_stdout
-
-
-def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: PurePath):
-    """Util function to save a geodf to geojson with a prompt"""
-    if savepath.exists():
-        prompt_success = False
-        while not prompt_success:
-            overwrite = str(input(f"Overwriting {savepath}. Proceed? (Y/N)"))
-            if overwrite == "Y" or overwrite == "y":
-                prompt_success = True
-                savepath.write_text(x.to_json())
-            elif overwrite == "N" or overwrite == "n":
-                prompt_success = True
-                sys.exit("Exiting")

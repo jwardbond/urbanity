@@ -78,9 +78,7 @@ class DownloadOSMNetwork(unittest.TestCase):
         self.assertEqual("EPSG:4326", network.crs)
 
         # test that ouputs match
-        network_from_file = gpd.read_file(networkpath)
-        network_from_file.set_crs("EPSG:4326")
-        network_from_file["id"] = network_from_file["id"].astype(str).astype(np.int64)
+        network_from_file = utils.input_to_geodf(networkpath)
         assert_geodataframe_equal(network, network_from_file)
 
     def test_download_error(self):
@@ -118,11 +116,7 @@ class TestDownloadOSMBuildings(unittest.TestCase):
         self.assertEqual("EPSG:4326", buildings.crs)
 
         # test that ouputs match
-        buildings_from_file = gpd.read_file(buildingspath)
-        buildings_from_file.set_crs("EPSG:4326")
-        buildings_from_file["id"] = (
-            buildings_from_file["id"].astype(str).astype(np.int64)
-        )
+        buildings_from_file = utils.input_to_geodf(buildingspath)
         assert_geodataframe_equal(buildings, buildings_from_file)
 
     def test_download_error(self):

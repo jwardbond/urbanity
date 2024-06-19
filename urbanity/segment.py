@@ -36,10 +36,8 @@ def segment(
         point_precision (int, optional): Passed to genregion. The precision of the point object while processing.
     """
     # Load and convert to EPSG:3587
-    if isinstance(network, PurePath):
-        network = gpd.read_file(network)
-    elif not isinstance(network, gpd.GeoDataFrame):
-        TypeError(f"Expected PurePath or GeoDataFrame, got {type(network)} instead.")
+
+    network = utils.input_to_geodf(network)
 
     network = network.to_crs("EPSG:3587")
     edges = network["geometry"].to_list()
@@ -63,8 +61,8 @@ def segment(
 
     # Save and plot
     if savepath:
-        filepath = savepath / (savepath.stem + "_segments.geojson")
-        filepath.write_text(segments.to_json())
+        savepath = savepath / (savepath.stem + "_segments.geojson")
+        utils.save_geodf_with_prompt(segments, savepath)
 
     segments["id"] = segments.index
     segments = segments[["id", "geometry"]]

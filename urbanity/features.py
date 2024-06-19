@@ -3,38 +3,8 @@ from pathlib import Path, PurePath
 
 import numpy as np
 import geopandas as gpd
-from matplotlib import pyplot as plt
 
-
-def _input_to_geodf(
-    x: gpd.geodataframe.GeoDataFrame | gpd.geoseries.GeoSeries | PurePath,
-):
-    """Util function used to parse function inputs."""
-    if isinstance(x, PurePath):
-        x = gpd.read_file(x)
-        x.set_crs("EPSG:4326", allow_override=False)
-    elif not (
-        isinstance(x, gpd.geodataframe.GeoDataFrame)
-        or isinstance(x, gpd.geoseries.GeoSeries)
-    ):
-        raise TypeError(
-            f"Expected geodataframe or pathlib path to geojson, got {type(x)}"
-        )
-
-    return x
-
-
-def _save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: PurePath):
-    if savepath.exists():
-        prompt_success = False
-        while not prompt_success:
-            overwrite = str(input(f"Overwriting {savepath}. Proceed? (Y/N)"))
-            if overwrite == "Y" or overwrite == "y":
-                prompt_success = True
-                savepath.write_text(x.to_json())
-            elif overwrite == "N" or overwrite == "n":
-                prompt_success = True
-                sys.exit("Exiting")
+import utils
 
 
 def subtract_polygons(
@@ -59,8 +29,8 @@ def subtract_polygons(
     segments = segments.copy()
     polygons = polygons.copy()
 
-    segments = _input_to_geodf(segments)
-    polygons = _input_to_geodf(polygons)
+    segments = utils.input_to_geodf(segments)
+    polygons = utils.input_to_geodf(polygons)
 
     # Get set difference
     segments = segments.overlay(polygons, how="difference")
@@ -68,7 +38,7 @@ def subtract_polygons(
     # Save / overwrite segment file
     if savepath:
         savepath = savepath / (savepath.stem + "_segments.geojson")
-        _save_geodf_with_prompt(segments, savepath)
+        utils.save_geodf_with_prompt(segments, savepath)
 
     return segments
 
@@ -95,8 +65,8 @@ def add_building_features(
     segments = segments.copy()
     buildings = buildings.copy()
 
-    segments = _input_to_geodf(segments)
-    buildings = _input_to_geodf(buildings)
+    segments = utils.input_to_geodf(segments)
+    buildings = utils.input_to_geodf(buildings)
 
     # Convert to projected crs for better area calculations
     segments = segments.to_crs("EPSG:3587")
@@ -124,7 +94,7 @@ def add_building_features(
     # Save / overwrite segment file
     if savepath:
         savepath = savepath / (savepath.stem + "_segments.geojson")
-        _save_geodf_with_prompt(segments, savepath)
+        utils.save_geodf_with_prompt(segments, savepath)
 
     return segments
 
