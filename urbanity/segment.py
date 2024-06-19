@@ -8,12 +8,9 @@ from genregion import generate_regions
 
 import utils
 
-#
-
 
 def segment(
     network: PurePath | gpd.GeoDataFrame,
-    show: bool = False,
     savepath: PurePath = None,
     grid_size: int = 1024,
     area_thres: int = 10000,
@@ -31,7 +28,6 @@ def segment(
 
     Args:
         network (PurePath or GeoDataFrame): The road network to use
-        show (bool, optional): If True, displays figure
         save (bool, optional): If True, saves figure / polygons
         grid_size (int, optional): Passed to genregion. Use to build a grid dictionary for searching. Defaults to 1024.
         area_thres (int, optional): Passed to genregion. The minimum area of a generated region. Defaults to 10000.
@@ -50,39 +46,30 @@ def segment(
 
     # Extract polygons
     print("Segmenting road network...")
-    urban_regions = generate_regions(
-        edges,
-        grid_size=grid_size,
-        area_thres=area_thres,
-        width_thres=width_thres,
-        clust_width=clust_width,
-        point_precision=point_precision,
-    )
+    with utils.HiddenPrints():
+        urban_regions = generate_regions(
+            edges,
+            grid_size=grid_size,
+            area_thres=area_thres,
+            width_thres=width_thres,
+            clust_width=clust_width,
+            point_precision=point_precision,
+        )
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
     # Convert back to the correct crs
-    polygons = gpd.GeoSeries(urban_regions, crs="EPSG:3587")
-    polygons = polygons.to_crs("EPSG:4326")
+    segments = gpd.GeoDataFrame(geometry=urban_regions, crs="EPSG:3587")
+    segments = segments.to_crs("EPSG:4326")
 
     # Save and plot
     if savepath:
         filepath = savepath / (savepath.stem + "_segments.geojson")
-        filepath.write_text(polygons.to_json())
+        filepath.write_text(segments.to_json())
 
-    if show:
-        colors = [tuple(np.random.uniform(0, 1, 3)) for _ in urban_regions]
-        polygons.plot(color=colors)
+    segments["id"] = segments.index
+    segments = segments[["id", "geometry"]]
 
-        if savepath:
-            plt.savefig(savepath / (savepath.stem + "_segments.png"))
-
-        plt.show()
-
-    output = gpd.GeoDataFrame(geometry=polygons)
-    output["id"] = output.index
-    output = output[["id", "geometry"]]
-
-    return output
+    return segments
 
 
 if __name__ == "__main__":

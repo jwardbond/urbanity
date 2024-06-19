@@ -4,6 +4,8 @@ import unittest
 import warnings
 from pathlib import Path
 
+import numpy as np
+import geopandas as gpd
 from geopandas.testing import assert_geodataframe_equal
 
 import urbanity.segment as sg
@@ -39,8 +41,10 @@ class TestSegment(unittest.TestCase):
         self.assertTrue(segmentpath.exists())
 
         # test that the output is in the right crs
-        self.assertTrue("EPSG:4326", segments.crs)
+        self.assertEqual("EPSG:4326", segments.crs)
 
         # test that ouputs match
-        segments_from_file = utils.input_to_geodf(segmentpath)
+        segments_from_file = gpd.read_file(segmentpath)
+        segments_from_file.set_crs("EPSG:4326")
+        segments_from_file["id"] = segments_from_file["id"].astype(str).astype(np.int64)
         assert_geodataframe_equal(segments, segments_from_file)

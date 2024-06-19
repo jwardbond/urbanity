@@ -1,36 +1,40 @@
+import os
+import sys
 import unittest
 import warnings
 from pathlib import Path
 
+import numpy as np
 import geopandas as gpd
+from geopandas.testing import assert_geodataframe_equal
 
+import utils
 import urbanity.download as ud
-
-import os
-import sys
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]), "Library", "share", "gdal"
-)  # HACK
-
-# TODO add some test cases for coordinate systems
+)  # HACK GDAL warning suppression
 
 
 class TestDownloadOSMBoundary(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.query = "East York, Ontario"
+
         cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
         cls.boundarypath.unlink(missing_ok=True)  # delete existing files
 
     def setUp(self) -> None:
-        warnings.simplefilter("ignore", category=DeprecationWarning)  # HACK
+        warnings.simplefilter(
+            "ignore", category=DeprecationWarning
+        )  # HACK geopandas warning suppression
 
     def test_download_osm_boundary(self) -> None:
         query = self.query
         boundarypath = self.boundarypath
 
-        boundary = ud.download_osm_boundary(query, savepath=boundarypath.parent)
+        with utils.HiddenPrints():
+            boundary = ud.download_osm_boundary(query, savepath=boundarypath.parent)
 
         # Test that the output file exists
         self.assertTrue(boundarypath.exists())
@@ -39,6 +43,8 @@ class TestDownloadOSMBoundary(unittest.TestCase):
         gdf = gpd.read_file(boundarypath)
         self.assertEqual(gdf.iloc[0]["geometry"], boundary)
 
+        # TODO test crs
+
     def test_download_osm_boundary_nonexistent(self):  # TODO
         pass
 
@@ -46,42 +52,36 @@ class TestDownloadOSMBoundary(unittest.TestCase):
 class DownloadOSMNetwork(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        warnings.simplefilter("ignore", category=DeprecationWarning)  # HACK
         cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
-        cls.boundarypath.unlink(missing_ok=True)
 
-        cls.boundary = ud.download_osm_boundary(
-            "East York, Toronto", savepath=cls.boundarypath.parent
-        )
+        cls.networkpath = Path("./tests/test_files/test_files_road_network.geojson")
+        cls.networkpath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
-        warnings.simplefilter("ignore", category=DeprecationWarning)  # HACK
+        warnings.simplefilter(
+            "ignore", category=DeprecationWarning
+        )  # HACK geopandas warning suppression
 
-        self.networkpath = Path("./tests/test_files/test_files_road_network.geojson")
-        self.networkpath.unlink(missing_ok=True)  # delete existing files
-
-    def test_download_from_polygon(self):
-        networkpath = self.networkpath
-        boundary = self.boundary
-
-        network = ud.download_osm_network(boundary, savepath=networkpath.parent)
-
-        # Test that the output file exists
-        self.assertTrue(networkpath.exists())
-
-        # The rest of the functionality is tested in DownloadOSMNetwork.test_download_from_file
+    # delete existing files
 
     def test_download_from_file(self):
         networkpath = self.networkpath
         boundarypath = self.boundarypath
 
-        network = ud.download_osm_network(boundarypath, savepath=networkpath.parent)
+        with utils.HiddenPrints():
+            network = ud.download_osm_network(boundarypath, savepath=networkpath.parent)
 
         # Test that the output file exists
         self.assertTrue(networkpath.exists())
 
         # Test that the crs is correct
-        self.assertEqual(network.crs, "EPSG:4326")
+        self.assertEqual("EPSG:4326", network.crs)
+
+        # test that ouputs match
+        network_from_file = gpd.read_file(networkpath)
+        network_from_file.set_crs("EPSG:4326")
+        network_from_file["id"] = network_from_file["id"].astype(str).astype(np.int64)
+        assert_geodataframe_equal(network, network_from_file)
 
     def test_download_error(self):
         boundary = "East York, Toronto"
@@ -89,23 +89,46 @@ class DownloadOSMNetwork(unittest.TestCase):
         self.assertRaises(TypeError, ud.download_osm_network, boundary)
 
 
-# class TestDownloadOsmNetwork(unittest.TestCase):
-#     def setUp(self) -> None:
-#         warnings.simplefilter("ignore", category=DeprecationWarning)
+class TestDownloadOSMBuildings(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
 
-#     def test_download_osm_network_exists(self) -> None:
-#         query = "Kingston, Ontario"
-#         outpath = Path("./temp")
-#         outpath.mkdir(exist_ok=True)
+        cls.buildingspath = Path("./tests/test_files/test_files_osm_buildings.geojson")
+        cls.buildingspath.unlink(missing_ok=True)
 
-#         ud.download_osm_network(query, outpath)
+    def setUp(self) -> None:
+        warnings.simplefilter(
+            "ignore", category=DeprecationWarning
+        )  # HACK geopandas warning suppression
 
-#         fileout = outpath / (outpath.stem + "_road_network.geojson")
+    def test_download_from_file(self):
+        buildingspath = self.buildingspath
+        boundarypath = self.boundarypath
 
-#         self.assertTrue(fileout.exists())
+        with utils.HiddenPrints():
+            buildings = ud.download_osm_buildings(
+                boundarypath, savepath=buildingspath.parent
+            )
 
-#     def test_download_osm_boundary_nonexistent(self):  # TODO
-#         pass
+        # Test that the output file exists
+        self.assertTrue(buildingspath.exists())
+
+        # Test that the crs is correct
+        self.assertEqual("EPSG:4326", buildings.crs)
+
+        # test that ouputs match
+        buildings_from_file = gpd.read_file(buildingspath)
+        buildings_from_file.set_crs("EPSG:4326")
+        buildings_from_file["id"] = (
+            buildings_from_file["id"].astype(str).astype(np.int64)
+        )
+        assert_geodataframe_equal(buildings, buildings_from_file)
+
+    def test_download_error(self):
+        boundary = "East York, Toronto"
+
+        self.assertRaises(TypeError, ud.download_osm_buildings, boundary)
 
 
 if __name__ == "__main__":

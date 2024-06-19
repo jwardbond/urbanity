@@ -6,6 +6,7 @@ from pathlib import Path, PurePath
 import yaml
 import shapely
 import osmnx as ox
+import numpy as np
 import geopandas as gpd
 from matplotlib import pyplot as plt
 
@@ -65,14 +66,21 @@ def download_osm_network(
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
     M = ox.convert.to_undirected(G)
-    _, gdf = ox.convert.graph_to_gdfs(M)
+    _, network = ox.convert.graph_to_gdfs(M)
+
+    # Correctly format output
+    network = network.reset_index()
+    network.index = network.index.astype(np.int64)
+    network = network[["geometry"]]
 
     # Save and return
     if savepath:
         filepath = savepath / (savepath.stem + "_road_network.geojson")
-        filepath.write_text(gdf.to_json())
+        filepath.write_text(network.to_json())
 
-    return gdf
+    network.insert(loc=0, column="id", value=network.index)
+
+    return network
 
 
 def download_osm_buildings(
@@ -95,17 +103,31 @@ def download_osm_buildings(
 
     # Get buildings polygons from OSM
     print("Downloading buildings from OSM...", end=" ")
-
     with warnings.catch_warnings():  # HACK geopandas warning suppression
         warnings.simplefilter("ignore")
         buildings = ox.features_from_polygon(polygon, tags={"building": True})
-
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
+
+    # Correctly format output
+    buildings = buildings.reset_index()
+    buildings.index = buildings.index.astype(np.int64)
+    buildings = buildings[
+        [
+            "osmid",
+            "addr:housenumber",
+            "addr:street",
+            "addr:unit",
+            "addr:postcode",
+            "geometry",
+        ]
+    ]
 
     # Save and return
     if savepath:
         filepath = savepath / (savepath.stem + "_osm_buildings.geojson")
         filepath.write_text(buildings.to_json())
+
+    buildings.insert(loc=0, column="id", value=buildings.index)
 
     return buildings
 
@@ -144,6 +166,8 @@ def download_osm_generic(
 
     # Remove any point geometries
     gdf = gdf[gdf["geometry"].geom_type != "Point"]
+
+    gdf = gdf.reset_index()
 
     # Save and return
     if savepath:
