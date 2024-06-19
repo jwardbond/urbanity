@@ -47,8 +47,9 @@ def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: PurePath):
             elif overwrite == "N" or overwrite == "n":
                 prompt_success = True
                 sys.exit("Exiting")
-    else:  # save new file
-        savepath.write_text(x.to_json())
+    else:
+        savepath.parent.mkdir(parents=True, exist_ok=True)  # make parent folder
+        savepath.write_text(x.to_json())  # save new file
 
 
 class HiddenPrints:

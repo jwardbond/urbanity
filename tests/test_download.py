@@ -34,7 +34,7 @@ class TestDownloadOSMBoundary(unittest.TestCase):
         boundarypath = self.boundarypath
 
         with utils.HiddenPrints():
-            boundary = ud.download_osm_boundary(query, savepath=boundarypath.parent)
+            boundary = ud.download_osm_boundary(query, savefolder=boundarypath.parent)
 
         # Test that the output file exists
         self.assertTrue(boundarypath.exists())
@@ -69,7 +69,9 @@ class DownloadOSMNetwork(unittest.TestCase):
         boundarypath = self.boundarypath
 
         with utils.HiddenPrints():
-            network = ud.download_osm_network(boundarypath, savepath=networkpath.parent)
+            network = ud.download_osm_network(
+                boundarypath, savefolder=networkpath.parent
+            )
 
         # Test that the output file exists
         self.assertTrue(networkpath.exists())
@@ -106,7 +108,7 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 
         with utils.HiddenPrints():
             buildings = ud.download_osm_buildings(
-                boundarypath, savepath=buildingspath.parent
+                boundarypath, savefolder=buildingspath.parent
             )
 
         # Test that the output file exists
@@ -124,6 +126,8 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 
         self.assertRaises(TypeError, ud.download_osm_buildings, boundary)
 
+
+# TODO add test for ms buildings
 
 if __name__ == "__main__":
     unittest.main(buffer=True)
