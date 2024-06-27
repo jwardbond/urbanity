@@ -10,7 +10,7 @@ import utils
 def subtract_polygons(
     segments: gpd.GeoDataFrame | PurePath,
     polygons: gpd.GeoDataFrame | PurePath,
-    savepath=None,
+    savefolder: PurePath = None,
 ):
     """Given segments and a list of polygons representing areas to NOT include, add various metrics
 
@@ -36,8 +36,57 @@ def subtract_polygons(
     segments = segments.overlay(polygons, how="difference")
 
     # Save / overwrite segment file
-    if savepath:
-        savepath = savepath / (savepath.stem + "_segments.geojson")
+    if savefolder:
+        savepath = savefolder / (savefolder.stem + "_segments.geojson")
+        utils.save_geodf_with_prompt(segments, savepath)
+
+    return segments
+
+
+def agg_features(
+    segments: gpd.GeoDataFrame | PurePath,
+    polygons: gpd.GeoDataFrame | PurePath,
+    feature: str,
+    how="mean",
+    fillnan=None,
+    savefolder: PurePath = None,
+):
+    """Given segments and a list of polygons representing areas to NOT include, add various metrics
+
+    Args:
+        segments (geopandas.GeoDataframe, pathlib.PurePath): Geodataframe of segments or path to a .geojson containing them.
+        polygons (geopandas.GeoDataframe, pathlib.PurePath):
+        savefolder (pathlib.PurePath, optional): Folder to save result to. Defaults to None (not saved)
+
+    Returns:
+        geopandas.GeoDataframe: A geodataframe containing the set difference segments - polygons
+    """
+    # TODO fill out docstring
+
+    # Parse inputs
+    segments = segments.copy()
+    polygons = polygons.copy()
+
+    segments = utils.input_to_geodf(segments)
+    polygons = utils.input_to_geodf(polygons)
+
+    # Join
+    right_gdf = polygons[["geometry", feature]]
+    joined = segments.sjoin(right_gdf, how="left").drop("index_right", axis=1)
+
+    if how == "mean":
+        joined = joined.groupby("id")[feature].mean()
+    else:
+        raise ValueError("How must be one of: mean")
+
+    segments = segments.merge(joined, on="id")
+
+    if fillnan is not None:
+        segments = segments.fillna(value=fillnan)
+
+    # Save / overwrite segment file
+    if savefolder:
+        savepath = savefolder / (savefolder.stem + "_segments.geojson")
         utils.save_geodf_with_prompt(segments, savepath)
 
     return segments
