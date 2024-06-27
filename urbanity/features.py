@@ -1,7 +1,5 @@
-import sys
 from pathlib import Path, PurePath
 
-import numpy as np
 import geopandas as gpd
 
 import utils
