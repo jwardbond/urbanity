@@ -9,7 +9,7 @@ import utils
 
 def segment(
     network: PurePath | gpd.GeoDataFrame,
-    savepath: PurePath = None,
+    savefolder: PurePath = None,
     grid_size: int = 1024,
     area_thres: int = 10000,
     width_thres: int = 20,
@@ -26,7 +26,7 @@ def segment(
 
     Args:
         network (PurePath or GeoDataFrame): The road network to use
-        save (bool, optional): If True, saves figure / polygons
+        savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
         grid_size (int, optional): Passed to genregion. Use to build a grid dictionary for searching. Defaults to 1024.
         area_thres (int, optional): Passed to genregion. The minimum area of a generated region. Defaults to 10000.
         width_thres (int, optional): Passed to genregion. The minimum ratio of area/perimeter. Defaults to 20.
@@ -41,7 +41,7 @@ def segment(
     edges = network["geometry"].to_list()
 
     # Extract polygons
-    print("Segmenting road network...")
+    print("Segmenting road network...", end=" ")
     with utils.HiddenPrints():
         urban_regions = generate_regions(
             edges,
@@ -58,8 +58,8 @@ def segment(
     segments = segments.to_crs("EPSG:4326")
 
     # Save and plot
-    if savepath:
-        savepath = savepath / (savepath.stem + "_segments.geojson")
+    if savefolder:
+        savepath = savefolder / (savefolder.stem + "_segments.geojson")
         utils.save_geodf_with_prompt(segments, savepath)
 
     segments["id"] = segments.index
