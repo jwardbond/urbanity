@@ -257,15 +257,17 @@ def download_ms_buildings(
             idx += len(gdf)
             buildings = pd.concat([buildings, gdf], ignore_index=True)
 
-    # Format output
+    # Output formatting
     buildings = buildings.clip(boundary)
-
     buildings.reset_index()
-    buildings.index = gdf.index.astype(np.int64)
+    buildings.index = buildings.index.astype(np.int64)
+    buildings["height"] = buildings["properties"].apply(lambda x: x["height"])
+    buildings["confidence"] = buildings["properties"].apply(lambda x: x["confidence"])
 
+    buildings = buildings.drop(labels=["id", "properties"], axis=1)
     if savefolder:
         savepath = savefolder / (savefolder.stem + "_ms_buildings.geojson")
-        utils.save_geodf_with_prompt(gdf, savepath)
+        utils.save_geodf_with_prompt(buildings, savepath)
 
     buildings.insert(loc=0, column="id", value=buildings.index)
 
