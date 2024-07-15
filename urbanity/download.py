@@ -14,9 +14,6 @@ import geopandas as gpd
 import utils
 
 # The following imports are all for microsoft building footprints
-# import planetary_computer
-# import pystac_client
-# import deltalake
 import mercantile
 
 # TODO Handle missing boundaries (download square box)
