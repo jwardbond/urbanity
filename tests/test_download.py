@@ -1,5 +1,6 @@
 import os
 import sys
+
 import unittest
 import warnings
 from pathlib import Path
@@ -19,7 +20,7 @@ os.environ["GDAL_DATA"] = os.path.join(
 class TestDownloadOSMBoundary(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.query = "East York, Ontario"
+        cls.query = "Little Portugal, Toronto"
 
         cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
         cls.boundarypath.unlink(missing_ok=True)  # delete existing files
@@ -130,4 +131,7 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 # TODO add test for ms buildings
 
 if __name__ == "__main__":
-    unittest.main(buffer=True)
+    pass
+
+# if __name__ == "__main__":
+#     unittest.main(buffer=True)

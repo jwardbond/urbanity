@@ -1,10 +1,8 @@
 import os
-import argparse
 import warnings
 import tempfile
 from pathlib import Path, PurePath
 
-import yaml
 import shapely
 import osmnx as ox
 import numpy as np
@@ -117,15 +115,21 @@ def download_osm_buildings(
     # Correctly format output
     buildings = buildings.reset_index()
     buildings.index = buildings.index.astype(np.int64)
+
+    # The next two lines of code are rather needlessly complicated and just
+    # select only desired columns from the gdf, while allowing for the condition
+    # that one or more of the desired columns might not exist. It then makes sure
+    # the columns are in the correct order
+    filt = [
+        "osmid",
+        "addr:housenumber",
+        "addr:street",
+        "addr:unit",
+        "addr:postcode",
+        "geometry",
+    ]
     buildings = buildings[
-        [
-            "osmid",
-            "addr:housenumber",
-            "addr:street",
-            "addr:unit",
-            "addr:postcode",
-            "geometry",
-        ]
+        sorted(buildings.columns.intersection(filt), key=lambda x: filt.index(x))
     ]
 
     # Save and return
@@ -287,34 +291,5 @@ def _parse_polygon(
     return polygon
 
 
-# if __name__ == "__mains__":
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("place")
-#     args = parser.parse_args()
-#     place = args.place
-
-#     savepath = Path(f"results/{_place_to_filename(place)}")
-
-#     savepath.mkdir(exist_ok=True, parents=True)
-
-#     print(savepath / (savepath.stem + "_filename"))
-#     download_osm_boundary(query=place, savepath=savepath)
-
-#     download_osm_network(
-#         polygon=savepath / (savepath.stem + "_boundary.geojson"),
-#         savepath=savepath,
-#     )
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("boundarypath")
-    parser.add_argument
-    args = parser.parse_args()
-    boundarypath = Path(args.boundarypath)
-
-    with open(Path("./data/temp_tags.yml")) as f:
-        tags = yaml.safe_load(f)
-
-    download_ms_buildings(
-        boundary=boundarypath,
-    )
+    pass
