@@ -114,6 +114,9 @@ def download_osm_buildings(
         buildings = ox.features_from_polygon(boundary, tags={"building": True})
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
+    # Remove any point geometries
+    buildings = buildings[buildings["geometry"].geom_type != "Point"]
+
     # Correctly format output
     buildings = buildings.reset_index()
     buildings.index = buildings.index.astype(np.int64)
@@ -258,7 +261,7 @@ def download_ms_buildings(
             buildings = pd.concat([buildings, gdf], ignore_index=True)
 
     # Output formatting
-    buildings = buildings.clip(boundary)
+    # buildings = buildings.clip(boundary)
     buildings.reset_index()
     buildings.index = buildings.index.astype(np.int64)
     buildings["height"] = buildings["properties"].apply(lambda x: x["height"])
