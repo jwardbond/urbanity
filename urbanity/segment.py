@@ -33,11 +33,11 @@ def segment(
         clust_width (int, optional): Passed to genregion. The threshold that helps construct the cluster.
         point_precision (int, optional): Passed to genregion. The precision of the point object while processing.
     """
-    # Load and convert to EPSG:3587
+    # Load and convert to EPSG:3857
 
     network = utils.input_to_geodf(network)
 
-    network = network.to_crs("EPSG:3587")
+    network = network.to_crs("EPSG:3857")
     edges = network["geometry"].to_list()
 
     # Extract polygons
@@ -54,7 +54,7 @@ def segment(
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
     # Convert back to the correct crs
-    segments = gpd.GeoDataFrame(geometry=urban_regions, crs="EPSG:3587")
+    segments = gpd.GeoDataFrame(geometry=urban_regions, crs="EPSG:3857")
     segments = segments.to_crs("EPSG:4326")
 
     # Save and plot
