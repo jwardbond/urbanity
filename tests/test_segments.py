@@ -1,5 +1,6 @@
 import os
 import sys
+import copy
 import unittest
 import warnings
 from pathlib import Path
@@ -56,3 +57,43 @@ class TestSegments(unittest.TestCase):
 
         # Test that the segmentation generation is (still) running correctly
         assert_geodataframe_equal(generated.segments, loaded.segments)
+
+
+class TestSegmentsFeatureMethods(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        warnings.simplefilter(
+            "ignore", category=DeprecationWarning
+        )  # HACK geopandas warning suppression
+
+        # Set output path and get rid of existing files
+        cls.region = Segments.load_segments(
+            path_to_segments=Path("./tests/test_files/test_files_segments.geojson"),
+            proj_crs="EPSG:3347",
+        )
+
+    def test_subtract_polygons(self) -> None:
+        region = copy.deepcopy(self.region)
+        polygons = utils.input_to_geodf(
+            Path("./tests/test_files/test_files_osm_buildings.geojson")
+        )
+
+        new = region.subtract_polygons(polygons)
+
+        # region should be unchanged
+        self.assertTrue(region == self.region)
+
+        # new should be different
+        self.assertFalse(new == region)
+
+        # new should have same crs
+        self.assertEqual(new.proj_crs, region.proj_crs)
+
+        # new should have WSG84 CRS
+        self.assertEqual(new.segments.crs, "EPSG:4326")
+
+        # new should have a smaller total area
+        self.assertLess(
+            new.segments.to_crs(new.proj_crs).area.sum(),
+            region.segments.to_crs(region.proj_crs).area.sum(),
+        )

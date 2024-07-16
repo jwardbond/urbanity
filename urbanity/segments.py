@@ -1,3 +1,4 @@
+import copy
 from typing import Self
 from pathlib import PurePath
 
@@ -50,7 +51,7 @@ class Segments:
             point_precision (int, optional): Passed to _create_segments for segmentation. The precision of the point object while processing.
 
         Returns:
-            Self: An instance of Segments with the segments in WGS84/EPSG:4326
+            Segments: An instance of Segments with the segments in WGS84/EPSG:4326
         """
 
         if isinstance(network, PurePath):
@@ -90,7 +91,38 @@ class Segments:
             proj_crs(str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
 
         Returns:
-            Self: An instance of Segments_
+            Segments: An instance of Segments
         """
         segments = utils.input_to_geodf(path_to_segments)
         return cls(segments, proj_crs)
+
+    def __eq__(self, other: object) -> bool:
+        bl = self.segments.equals(other.segments)
+        bl = bl and (self.proj_crs == other.proj_crs)
+        return bl
+
+    def subtract_polygons(
+        self,
+        polygons: gpd.GeoDataFrame | PurePath,
+    ) -> Self:
+        """Subtract polygons from segments
+
+        This is basically a wrapper for geopandas overlay diff.
+
+        Args:
+            polygons (geopandas.GeoDataframe, pathlib.PurePath): Geodataframe of polygons to subtract, or path to a .geojson containing them.
+
+        Returns:
+            Segments: Returns Segments with the polygons subtracted
+        """
+
+        # Parse inputs
+        obj = copy.deepcopy(self)
+
+        polygons = utils.input_to_geodf(polygons)
+        polygons = polygons.copy(deep=True)
+
+        # Get set difference
+        obj.segments = obj.segments.overlay(polygons, how="difference")
+
+        return obj
