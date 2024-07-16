@@ -49,7 +49,9 @@ def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: PurePath):
                 sys.exit("Exiting")
     else:
         savepath.parent.mkdir(parents=True, exist_ok=True)  # make parent folder
-        savepath.write_text(x.to_json())  # save new file
+        savepath.write_text(
+            x.to_json(to_wgs84=True)
+        )  # save new file with standard coords
 
 
 class HiddenPrints:
