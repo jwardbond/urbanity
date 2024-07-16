@@ -131,7 +131,4 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 # TODO add test for ms buildings
 
 if __name__ == "__main__":
-    pass
-
-# if __name__ == "__main__":
-#     unittest.main(buffer=True)
+    unittest.main(buffer=True)
