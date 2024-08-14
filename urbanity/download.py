@@ -268,7 +268,8 @@ def download_ms_buildings(
     buildings["height"] = buildings["properties"].apply(lambda x: x["height"])
     buildings["confidence"] = buildings["properties"].apply(lambda x: x["confidence"])
 
-    buildings = buildings.drop(labels=["id", "properties"], axis=1)
+    buildings = buildings[["type", "height", "confidence", "geometry"]]
+
     if savefolder:
         savepath = savefolder / (savefolder.stem + "_ms_buildings.geojson")
         utils.save_geodf_with_prompt(buildings, savepath)
