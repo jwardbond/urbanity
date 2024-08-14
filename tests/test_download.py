@@ -128,6 +128,44 @@ class TestDownloadOSMBuildings(unittest.TestCase):
         self.assertRaises(TypeError, ud.download_osm_buildings, boundary)
 
 
+class TestDownloadMSBuildings(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
+
+        cls.buildingspath = Path("./tests/test_files/test_files_ms_buildings.geojson")
+        cls.buildingspath.unlink(missing_ok=True)
+
+    def setUp(self) -> None:
+        warnings.simplefilter(
+            "ignore", category=DeprecationWarning
+        )  # HACK geopandas warning suppression
+
+    def test_download_from_file(self):
+        buildingspath = self.buildingspath
+        boundarypath = self.boundarypath
+
+        with utils.HiddenPrints():
+            buildings = ud.download_ms_buildings(
+                boundarypath, savefolder=buildingspath.parent
+            )
+
+        # Test that the output file exists
+        self.assertTrue(buildingspath.exists())
+
+        # Test that the crs is correct
+        self.assertEqual("EPSG:4326", buildings.crs)
+
+        # test that ouputs match
+        buildings_from_file = utils.input_to_geodf(buildingspath)
+        assert_geodataframe_equal(buildings, buildings_from_file)
+
+    def test_download_error(self):
+        boundary = "East York, Toronto"
+
+        self.assertRaises(TypeError, ud.download_ms_buildings, boundary)
+
+
 # TODO add test for ms buildings
 
 if __name__ == "__main__":

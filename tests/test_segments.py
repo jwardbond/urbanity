@@ -97,3 +97,29 @@ class TestSegmentsFeatureMethods(unittest.TestCase):
             new.segments.to_crs(new.proj_crs).area.sum(),
             region.segments.to_crs(region.proj_crs).area.sum(),
         )
+
+    def test_agg_features(self) -> None:
+        region = copy.deepcopy(self.region)
+        polygons = utils.input_to_geodf(
+            Path("./tests/test_files/test_files_ms_buildings.geojson")
+        )
+
+        new = region.agg_features(polygons, feature="height", how="mean", fillnan=0)
+
+        # region should be unchanged
+        self.assertTrue(region == self.region)
+
+        # new should be different
+        self.assertFalse(new == region)
+
+        # new should have same crs
+        self.assertEqual(new.proj_crs, region.proj_crs)
+
+        # new should have WSG84 CRS
+        self.assertEqual(new.segments.crs, "EPSG:4326")
+
+        # new should have a smaller total area
+        self.assertLess(
+            new.segments.to_crs(new.proj_crs).area.sum(),
+            region.segments.to_crs(region.proj_crs).area.sum(),
+        )
