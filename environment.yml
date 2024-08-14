@@ -292,4 +292,4 @@ dependencies:
       - spark-parser==1.8.9
       - term-background==1.0.1
       - xdis==6.1.0
-prefix: C:\Users\jesse_8eqas6o\miniconda3\envs\urbanity
+prefix: C:\Users\jesse\miniconda3\envs\urbanity
