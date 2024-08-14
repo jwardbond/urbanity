@@ -1,13 +1,16 @@
-
 # Folders
 data/
 test_files/
 temp/ 
 cache/
 .vscode/
+archive/
 
 # Filetypes
 *.ipynb
+
+# Specific files
+!example.ipynb
 
 ##################################################
 #Everything below is default
