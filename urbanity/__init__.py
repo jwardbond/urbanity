@@ -5,4 +5,4 @@ os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]), "Library", "share", "gdal"
 )  # HACK GDAL warning suppression
 
-from .segments import Segments
+from .region import Region
