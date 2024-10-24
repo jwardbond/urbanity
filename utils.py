@@ -27,6 +27,8 @@ def input_to_geodf(
         x.set_crs("EPSG:4326", allow_override=False)
         x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
         x = x.fillna(value=np.nan)
+    elif isinstance(x, gpd.GeoDataFrame):
+        x = x.to_crs("EPSG:4326")
     elif not (
         isinstance(x, gpd.geodataframe.GeoDataFrame)
         or isinstance(x, gpd.geoseries.GeoSeries)
