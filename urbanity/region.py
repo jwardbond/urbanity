@@ -1,11 +1,9 @@
 import copy
 from typing import Self
 from pathlib import PurePath, Path
-from itertools import product
 
-import shapely.ops
-import swifter
 import shapely
+import shapely.ops
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -28,8 +26,14 @@ class Region:
     """
 
     def __init__(self, segments: gpd.GeoDataFrame, proj_crs: str):
-        self.segments = segments
+        if "area" not in segments:
+            segments["area"] = segments.to_crs(proj_crs)["geometry"].area
+
+        if "id" not in segments:
+            segments.insert(loc=0, column="id", value=range(len(segments)))
+
         self.proj_crs = proj_crs
+        self.segments = segments
 
     @classmethod
     def from_network(
@@ -53,7 +57,7 @@ class Region:
 
         Args:
             network (GeoDataFrame or GeoSeries or Purepath): The road network to use, stored as a geodataframe/geoseries of linestrings OR the path to a .geojson containing the same.
-            proj_crs(str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
+            proj_crs (str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
             grid_size (int, optional):Passed to _create_segments for segmentation. Used to build a grid dictionary for searching. Defaults to 1024.
             min_area (int, optional): Passed to _create_segments for segmentation. The minimum area of a generated region. Defaults to 10000.
             max_area (int, optional): Passed to _subdivide_segments for segmentation. The maximum area of a generated region. Defaults to 0 (no max area).
@@ -70,6 +74,7 @@ class Region:
         if isinstance(network, PurePath):
             network = utils.input_to_geodf(network)
 
+        # Convert to projected crs
         network = network.to_crs(proj_crs)
         edges = network["geometry"].to_list()
 
@@ -89,7 +94,7 @@ class Region:
         segments = gpd.GeoDataFrame(geometry=urban_regions, crs=proj_crs)
 
         if max_area:
-            segments = cls.subdivide_segments(segments, max_area)
+            segments = cls._subdivide_segments(segments, max_area)
 
         # Convert back to default crs
         segments = segments.to_crs("EPSG:4326")
@@ -104,103 +109,20 @@ class Region:
         """Loads pre-existing segments from a .geojson file
 
         Args:
-            path_to_segments (PurePath): A path
-            proj_crs(str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
+            path_to_segments (PurePath): The path to the .geojson containing pre-made segments
+            proj_crs (str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
 
         Returns:
-            Region: An instance of Region
+            Region: An instance of Region with the segments in WGS84/EPSG:4326
         """
         segments = utils.input_to_geodf(path_to_segments)
         return cls(segments, proj_crs)
-
-    @classmethod
-    def subdivide_segments(cls, segments, max_area) -> Self:
-        """Subdivides all segments greater than a minimum area. Segments are subdivided by an evenly spaced grid.
-
-        #TODO Figure out how to handle buildings on edges.
-
-        Adapted from `this <https://stackoverflow.com/questions/68770508/st-make-grid-method-equivalent-in-python>` SO answer.
-
-        Args:
-            segments : geopandas.Geodataframe
-            max_area : shapely.geometry
-            edge_size : length of the grid cell
-
-        Returns:
-            Region: an instance of Region with large segments subdivided
-        """
-        segments = copy.deepcopy(segments)
-
-        if "area" not in segments:
-            segments["area"] = segments["geometry"].area
-
-        larger = segments[segments.area > max_area].copy()
-        smaller = segments[segments.area <= max_area].copy()
-
-        while not larger.empty:
-            # Split large geometries
-            larger["geo_tmp"] = larger.apply(
-                lambda row: cls._split_polygon(row.geometry), axis=1
-            )
-            larger = larger.explode(column="geo_tmp", ignore_index=True)
-            larger["geometry"] = larger["geo_tmp"]
-
-            # Combine the split dataframe again
-            segments = gpd.GeoDataFrame(pd.concat([larger, smaller]))
-            segments["area"] = segments.geometry.area
-
-            # Generate new dataframe splits
-            larger = segments[segments.area > max_area].copy()
-            smaller = segments[segments.area <= max_area].copy()
-
-        # re-index
-        segments = segments.drop(labels=["geo_tmp", "area"], axis=1)
-        segments = segments.reset_index(drop=True)
-
-        return segments
-
-    @classmethod
-    def _testfunc(cls, geom):
-        pass
-
-    @classmethod
-    def _split_polygon(cls, geom):
-        """_summary_ #TODO
-
-        Args:
-            geom (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
-
-        bounds = geom.bounds
-
-        # If geometry is longer than it is tall, split along a vertical line
-        if (bounds[2] - bounds[0]) > (bounds[3] - bounds[1]):
-            x_mid = (bounds[0] + bounds[2]) / 2
-            splitter = shapely.LineString([(x_mid, bounds[1]), (x_mid, bounds[3])])
-
-        # Else, split along a horizontal line
-        else:
-            y_mid = (bounds[1] + bounds[3]) / 2
-            splitter = shapely.LineString([(bounds[0], y_mid), (bounds[2], y_mid)])
-
-        # Convert from geometry collection to list
-        geom = shapely.ops.split(geom, splitter)
-        geom = list(geom.geoms)
-        return geom
-
-    def __eq__(self, other: object) -> bool:
-        bl = self.segments.equals(other.segments)
-        bl = bl and (self.proj_crs == other.proj_crs)
-        return bl
 
     def subtract_polygons(
         self,
         polygons: gpd.GeoDataFrame | PurePath,
     ) -> Self:
-        """Subtract polygons from segments
+        """Subtracts polygons from segments
 
         This is basically a wrapper for geopandas overlay diff.
 
@@ -225,39 +147,39 @@ class Region:
     def agg_features(
         self,
         polygons: gpd.GeoDataFrame | PurePath,
-        feature: str,
+        feature_name: str,
         how: str = "mean",
         fillnan=None,
     ) -> Self:
         """Given segments and a geodataframe of polygons, aggregate the polygons on a per-segment basis.
 
-        For example, if you have building footprints + height data, you can calculate the average height of all buildings within each segment with `how="mean"`
+        For example, if you have building footprints + height data, you can calculate the average height of all buildings within each segment with `how="mean"`.
 
         Args:
             polygons (gpd.GeoDataFrame | PurePath): A geodataframe containing features and the polygons to aggregate over
-            feature (str): The feature (column) name within "polygons" to aggregate
-            how (str, optional): The desired aggregation behaviour. Options are "mean". Defaults to "mean".
-            fillnan (_type_, optional):  Value to fill NaN entries with. Defaults to `None`.
+            feature_name (str): The feature (column) name within "polygons" to aggregate
+            how (str, optional): The desired aggregation behaviour. Options are "mean". Defaults to "mean"
+            fillnan (_type_, optional):  Value to fill NaN entries with. Defaults to `None`
 
         Raises:
             ValueError: An unsupported aggregation behaviour (`how`) was specified
 
         Returns:
-            Region: _description_ #TODO
+            Region: A copy of the `Region` object after aggregation
         """
 
         # Parse inputs
         obj = copy.deepcopy(self)
 
-        polygons = polygons.copy()
         polygons = utils.input_to_geodf(polygons)
+        polygons = polygons.copy()
 
         # Join
-        right_gdf = polygons[["geometry", feature]]
+        right_gdf = polygons[["geometry", feature_name]]
         joined = obj.segments.sjoin(right_gdf, how="left").drop("index_right", axis=1)
 
         if how == "mean":
-            joined = joined.groupby("id")[feature].mean()
+            joined = joined.groupby("id")[feature_name].mean()
         else:
             raise ValueError("How must be one of: mean")
 
@@ -268,15 +190,65 @@ class Region:
 
         return obj
 
+    def disagg_features(
+        self, gdf: gpd.GeoDataFrame | PurePath, feature_name: str, how: str = "area"
+    ) -> Self:
+        # Parse inputs
+        obj = copy.deepcopy(self)
+
+        gdf = utils.input_to_geodf(gdf)
+        gdf = gdf.copy()
+        gdf = gdf[["geometry", feature_name]]
+
+        # Change to projected crs
+        obj.segments = obj.segments.to_crs(self.proj_crs)
+        gdf = gdf.to_crs(self.proj_crs)
+
+        # Intersect dataframes
+        if how == "area":
+            gdf["area"] = gdf["geometry"].area
+
+            # Split the gdf by segment boundaries
+            split_gdf = gpd.overlay(
+                gdf, obj.segments.drop(labels=["area"], axis=1), how="intersection"
+            )  # Dropping the area temporarily just helps with naming
+
+            # Split feature proportional to area
+            split_gdf["split_area"] = split_gdf["geometry"].area
+            fname = f"split_{feature_name}"
+
+            split_gdf[fname] = (
+                split_gdf[feature_name] * split_gdf["split_area"] / split_gdf["area"]
+            )
+
+            # Join back to original df
+            split_gdf = split_gdf[["id", fname]]
+            grouped = split_gdf.groupby("id")[fname].sum()
+            obj.segments = obj.segments.merge(grouped, on="id", how="inner")
+
+            # change new column to original name
+            obj.segments = obj.segments.rename(columns={fname: feature_name})
+
+        else:
+            raise ValueError(f"how = {how} is not a valid argument")
+
+        # change back to original crs
+        obj.segments = obj.segments.to_crs("EPSG:4326")
+
+        return obj
+
     def tile_segments(self, size, margin) -> Self:
         """Tiles all segments with squares `size` x `size`, with a gap of `margin` between them.
 
         Every segment is tiled using a grid aligned with the major axis of that segment.
 
+        Args:
+            size: The side length of the square you want to tile with. Units will depend on `self.proj_crs`
+            margin: The margin around tiles. Units will depend on `self.proj_crs`
+
         Returns:
-            Region: _description_
+            Region: A copy of the `Region` object after tiling
         """
-        # TODO fill docstring
 
         # Project
         obj = copy.deepcopy(self)
@@ -323,7 +295,7 @@ class Region:
                     row.p2,
                     row.p3,
                     row.p4,
-                ],  # TODO add the other inner polys to this list
+                ],
             ),
             axis=1,
             result_type="expand",
@@ -339,6 +311,77 @@ class Region:
         )
 
         return obj
+
+    @classmethod
+    def _subdivide_segments(
+        cls, segments: gpd.GeoDataFrame, max_area: int
+    ) -> gpd.GeoDataFrame:
+        """Subdivides all segments greater than a minimum area.
+
+        Overly large segments are divided in half either vertically or horizontally until they are below the max_area.
+
+        Args:
+            segments (geopandas.Geodataframe): A geodataframe containing the segments
+            max_area (int): The maximum area of a segment. Units will depend on the value of `Region.proj_crs`
+
+        Returns:
+            segments (geopandas.Geodataframe): A geodataframe containing the subdivided segments.
+        """
+        # TODO Figure out how to handle buildings on edges.
+        segments = copy.deepcopy(segments)
+
+        larger = segments[segments.area > max_area].copy()
+        smaller = segments[segments.area <= max_area].copy()
+
+        while not larger.empty:
+            # Split large geometries
+            larger["geo_tmp"] = larger.apply(
+                lambda row: cls._split_polygon(row.geometry), axis=1
+            )
+            larger = larger.explode(column="geo_tmp", ignore_index=True)
+            larger["geometry"] = larger["geo_tmp"]
+
+            # Combine the split dataframe again
+            segments = gpd.GeoDataFrame(pd.concat([larger, smaller]))
+            segments["area"] = segments.geometry.area
+
+            # Generate new dataframe splits
+            larger = segments[segments.area > max_area].copy()
+            smaller = segments[segments.area <= max_area].copy()
+
+        # re-index
+        segments = segments.drop(labels=["geo_tmp"], axis=1)
+        segments = segments.reset_index(drop=True)
+
+        return segments
+
+    @classmethod
+    def _split_polygon(cls, geom: shapely.Polygon):
+        """Splits a polygon in half either vertically or horizontally.
+
+        Args:
+            geom (shapely.Polygon): A shapely polygon
+
+        Returns:
+            geoms (list): A list of shapely polygons
+        """
+
+        bounds = geom.bounds
+
+        # If geometry is longer than it is tall, split along a vertical line
+        if (bounds[2] - bounds[0]) > (bounds[3] - bounds[1]):
+            x_mid = (bounds[0] + bounds[2]) / 2
+            splitter = shapely.LineString([(x_mid, bounds[1]), (x_mid, bounds[3])])
+
+        # Else, split along a horizontal line
+        else:
+            y_mid = (bounds[1] + bounds[3]) / 2
+            splitter = shapely.LineString([(bounds[0], y_mid), (bounds[2], y_mid)])
+
+        # Convert from geometry collection to list
+        geoms = shapely.ops.split(geom, splitter)
+        geoms = list(geoms.geoms)
+        return geoms
 
     def _mrr_azimuth(self, mrr: shapely.Polygon):
         """Calculates the azimuth of a rectangle on a cartesian plane.
@@ -438,3 +481,8 @@ class Region:
                 best_intersections = intersections
 
         return shapely.MultiPolygon(best_intersections), len(best_intersections)
+
+    def __eq__(self, other: object) -> bool:
+        bl = self.segments.equals(other.segments)
+        bl = bl and (self.proj_crs == other.proj_crs)
+        return bl

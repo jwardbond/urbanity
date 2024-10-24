@@ -113,7 +113,7 @@ class TestRegion(unittest.TestCase):
         self.assertTrue(shapely.equals(tall_split_lower, split_tall[0]))
         self.assertTrue(shapely.equals(tall_split_upper, split_tall[1]))
 
-    def test_subdivide_segments(self):
+    def test__subdivide_segments(self):
         side_length = 10
         max_area = 100
 
@@ -128,7 +128,7 @@ class TestRegion(unittest.TestCase):
         )
 
         segments = gpd.GeoDataFrame(geometry=[poly, poly], crs=self.proj_crs)
-        segments = Region.subdivide_segments(segments, max_area=max_area)
+        segments = Region._subdivide_segments(segments, max_area=max_area)
 
         # There should be 32 segments
         self.assertEqual(len(segments), 64)
@@ -144,60 +144,132 @@ class TestRegionFeatureMethods(unittest.TestCase):
             "ignore", category=DeprecationWarning
         )  # HACK geopandas warning suppression
 
-        # Set output path and get rid of existing files
-        cls.region = Region.load_segments(
-            path_to_segments=Path("./tests/test_files/test_files_segments.geojson"),
-            proj_crs="EPSG:3347",
+        # Create a mock region
+        square1 = shapely.Polygon([(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)])
+        square2 = shapely.Polygon(
+            [(100, 0), (200, 0), (200, 100), (100, 100), (100, 0)]
         )
+        proj_crs = "EPSG:3347"
+        segments = gpd.GeoDataFrame({"geometry": [square1, square2]}, crs=proj_crs)
+
+        segments = segments.to_crs("EPSG:4326")
+        cls.region = Region(segments, proj_crs)
+
+        # Create some smaller mock polygons to overlay
+        circle1 = shapely.Point(150, 80).buffer(20)
+        circle2 = shapely.Point(50, 20).buffer(15)
+        circle3 = shapely.Point(150, 40).buffer(10)
+        circle4 = shapely.Point(40, 80).buffer(20)
+
+        buildings = gpd.GeoDataFrame(
+            {"geometry": [circle1, circle2, circle3, circle4]}, crs=proj_crs
+        )
+        buildings["height"] = buildings["geometry"].area
+        buildings["area"] = buildings["geometry"].area
+
+        buildings = buildings.to_crs("EPSG:4326")
+        cls.buildings = buildings
 
     def test_subtract_polygons(self) -> None:
         region = copy.deepcopy(self.region)
-        polygons = utils.input_to_geodf(
-            Path("./tests/test_files/test_files_osm_buildings.geojson")
-        )
+        polygons = copy.deepcopy(self.buildings)
 
-        new = region.subtract_polygons(polygons)
+        output = region.subtract_polygons(polygons)
 
         # region should be unchanged
         self.assertTrue(region == self.region)
 
-        # new should be different
-        self.assertFalse(new == region)
+        # output should be different
+        self.assertFalse(output == region)
 
-        # new should have same crs
-        self.assertEqual(new.proj_crs, region.proj_crs)
+        # output should have same crs
+        self.assertEqual(output.proj_crs, region.proj_crs)
 
-        # new should have WSG84 CRS
-        self.assertEqual(new.segments.crs, "EPSG:4326")
+        # output should have WSG84 CRS
+        self.assertEqual(output.segments.crs, "EPSG:4326")
 
-        # new should have a smaller total area
+        # output should have a smaller total area
         self.assertLess(
-            new.segments.to_crs(new.proj_crs).area.sum(),
+            output.segments.to_crs(output.proj_crs).area.sum(),
             region.segments.to_crs(region.proj_crs).area.sum(),
         )
+        # self.assertAlmostEqual(
+        #     output.segments.to_crs(output.proj_crs).area.sum(),
+        #     region.segments.to_crs(region.proj_crs).area.sum()
+        #     - polygons.to_crs(region.proj_crs).area.sum(),
+        # )
 
     def test_agg_features(self) -> None:
         region = copy.deepcopy(self.region)
-        polygons = utils.input_to_geodf(
-            Path("./tests/test_files/test_files_ms_buildings.geojson")
+        polygons = copy.deepcopy(self.buildings)
+        output = region.agg_features(
+            polygons, feature_name="height", how="mean", fillnan=0
         )
-
-        new = region.agg_features(polygons, feature="height", how="mean", fillnan=0)
 
         # region should be unchanged
         self.assertTrue(region == self.region)
 
-        # new should be different
-        self.assertFalse(new == region)
+        # output should be different
+        self.assertFalse(output == region)
 
-        # new should have same crs
-        self.assertEqual(new.proj_crs, region.proj_crs)
+        # output should have same crs
+        self.assertEqual(output.proj_crs, region.proj_crs)
 
-        # new should have WSG84 CRS
-        self.assertEqual(new.segments.crs, "EPSG:4326")
+        # output should have WSG84 CRS
+        self.assertEqual(output.segments.crs, "EPSG:4326")
 
-        # new should have the same total area
+        # output should have the same total area
         self.assertAlmostEqual(
-            new.segments.to_crs(new.proj_crs).area.sum(),
+            output.segments.to_crs(output.proj_crs).area.sum(),
             region.segments.to_crs(region.proj_crs).area.sum(),
         )
+
+    def test_disagg_features(self) -> None:
+        region = copy.deepcopy(self.region)
+
+        circle1 = shapely.Point(100, 80).buffer(20)
+        circle2 = shapely.Point(70, 20).buffer(15)
+
+        polygons = gpd.GeoDataFrame(
+            {"geometry": [circle1, circle2]}, crs=region.proj_crs
+        )
+        polygons["pop"] = polygons["geometry"].area
+
+        # run disaggregator <-sounds made-up
+        output = region.disagg_features(polygons, "pop", how="area")
+
+        # region should be unchanged
+        self.assertTrue(region == self.region)
+
+        # output should be different
+        self.assertFalse(output == region)
+
+        # output should have same crs
+        self.assertEqual(output.proj_crs, region.proj_crs)
+
+        # output should have WSG84 CRS
+        self.assertEqual(output.segments.crs, "EPSG:4326")
+
+        # output should have the same total area
+        self.assertAlmostEqual(
+            output.segments.to_crs(output.proj_crs).area.sum(),
+            region.segments.to_crs(region.proj_crs).area.sum(),
+            4,
+        )
+
+        # output should have a new feature
+        self.assertTrue("pop" in output.segments)
+
+        # the population in the leftmost region should be circle2 and half of circle1
+        self.assertAlmostEqual(
+            output.segments[output.segments["id"] == 0]["pop"].sum(),
+            circle1.area / 2 + circle2.area,
+        )
+
+        self.assertAlmostEqual(
+            output.segments[output.segments["id"] == 1]["pop"].sum(),
+            circle1.area / 2,
+        )
+
+    def test_tiling(self) -> None:
+        pass
