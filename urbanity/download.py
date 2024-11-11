@@ -1,4 +1,5 @@
 import os
+import requests
 import warnings
 import tempfile
 from pathlib import Path, PurePath
@@ -8,6 +9,7 @@ import osmnx as ox
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+
 
 import utils
 
@@ -223,7 +225,7 @@ def download_ms_buildings(
     ]
 
     df = pd.read_csv(
-        "https://minedbuildings.blob.core.windows.net/global-buildings/dataset-links.csv"
+        "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
     )
 
     # Load tiles to temp dir
@@ -277,6 +279,12 @@ def download_ms_buildings(
     buildings.insert(loc=0, column="id", value=buildings.index)
 
     return buildings
+
+
+def download_worldpop(
+    country: str,
+):
+    pass
 
 
 def _parse_polygon(
