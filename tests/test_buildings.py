@@ -1,6 +1,5 @@
 import os
 import sys
-import copy
 import unittest
 import warnings
 from pathlib import Path
