@@ -4,6 +4,8 @@ from typing import Self
 import numpy as np
 import geopandas as gpd
 
+from utils import load_geojson
+
 
 class Buildings:
     def __init__(self, data: gpd.GeoDataFrame, proj_crs: str):
@@ -19,13 +21,7 @@ class Buildings:
 
     @classmethod
     def read_geojson(cls, data: pathlib.PurePath, proj_crs: str):
-        data = gpd.read_file(data)
-        data.set_crs("EPSG:4326", allow_override=False)
-        data["id"] = (
-            data["id"].astype(str).astype(np.int64)
-        )  # since id loads as an object
-        data = data.fillna(value=np.nan)
-
+        data = load_geojson(data)  # FIXME ultimate goal to maybe not rely on utils
         return cls(data, proj_crs)
 
     def create_volume_flag(

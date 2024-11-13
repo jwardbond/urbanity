@@ -5,6 +5,7 @@ temp/
 cache/
 .vscode/
 archive/
+notebooks/
 
 # Filetypes
 *.ipynb

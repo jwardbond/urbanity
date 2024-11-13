@@ -25,7 +25,7 @@ def load_geojson(
     if type(x) is str:
         x = pathlib.Path(x)
 
-    x = gpd.read_file(x)
+    x = gpd.read_file(x, engine="pyogrio", use_arrow=True)
     x.set_crs("EPSG:4326", allow_override=False)
     x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
     x = x.fillna(value=np.nan)
