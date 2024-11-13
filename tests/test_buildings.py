@@ -27,7 +27,7 @@ class TestBuildings(unittest.TestCase):
 
         building_data = {
             "id": [0, 1, 2, 3],
-            "height": [10.0, 20.0, 12.0, 25.0],
+            "height": [-1.0, 20.0, 12.0, 25.0],
             "geometry": [
                 shapely.Polygon([(0, 0), (5, 0), (5, 10), (0, 10)]),  # A=50, V=500
                 shapely.Polygon([(0, 0), (8, 0), (8, 10), (0, 10)]),  # A=80, V=1600
@@ -107,10 +107,9 @@ class TestBuildings(unittest.TestCase):
         # Should have a floors column
         self.assertTrue("floors" in buildings.data)
 
-        # Building with height on breakpoint should not have an extra floor
-        self.assertEqual(buildings.data.iloc[0]["floors"], 1)
-        self.assertEqual(buildings.data.iloc[1]["floors"], 2)
+        # Building with a height of -1 should have 0 floors
+        self.assertEqual(buildings.data.iloc[0]["floors"], 0)
 
-        # Building with height greater than 10m breakpoint should be 2 floors
+        self.assertEqual(buildings.data.iloc[1]["floors"], 2)
         self.assertEqual(buildings.data.iloc[2]["floors"], 2)
         self.assertEqual(buildings.data.iloc[3]["floors"], 3)

@@ -31,11 +31,13 @@ class Buildings:
     def create_volume_flag(
         self, min_vol: float, max_vol: float, flag_name: str
     ) -> Self:
-        """Selects buildings within a given volume range
+        """Selects buildings within a given volume range.
+
+        Min volume and Max volume should use the same units as your projected CRS
 
         Args:
-            min_vol (float): Minimum volume for filtering in cubic meters. (m^3)
-            max_vol (float): Maximum volume for filtering in cubic meters. (m^3)
+            min_vol (float): Minimum volume for filtering in cubic units
+            max_vol (float): Maximum volume for filtering in cubic units
             flag_name (str): The name for the building type (e.g. "sfh")
 
         Returns:
@@ -69,9 +71,11 @@ class Buildings:
     ):
         """Filters buildings by volume and assigns floor counts based on height.
 
+        Make sure units match the units of height you have in buildings.data
+
         Args:
-            floor_height (float): Height per floor in meters. Defaults to 2.75.
-            floor_breakpoints (list[float], optional): Custom height breakpoints for floors, in meters. Defaults to None (will construct from floor height).
+            floor_height (float): Height per floor. Defaults to 2.75.
+            floor_breakpoints (list[float], optional): Custom height breakpoints for floors. Defaults to None (will construct from floor height).
             type_col (str): The name for the building type. Defaults to "sfh" (single family home)
 
         Returns:
@@ -84,7 +88,7 @@ class Buildings:
         data = self.data
 
         # Determining Floors
-        breakpoints = [-1, 0]
+        breakpoints = [-1.1, 0]  # HACK -1.1 because some data has -1 in the dataset
         max_height = data["height"].max()
 
         if floor_breakpoints is not None:
