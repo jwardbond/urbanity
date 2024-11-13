@@ -7,7 +7,6 @@ from pathlib import Path
 
 
 import shapely
-import numpy as np
 import geopandas as gpd
 from geopandas.testing import assert_geodataframe_equal
 

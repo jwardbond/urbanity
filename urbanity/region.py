@@ -1,6 +1,6 @@
 import copy
 from typing import Self
-from pathlib import PurePath, Path
+from pathlib import PurePath
 
 import shapely
 import shapely.ops
