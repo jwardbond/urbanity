@@ -6,3 +6,4 @@ os.environ["GDAL_DATA"] = os.path.join(
 )  # HACK GDAL warning suppression
 
 from .region import Region
+from .buildings import Buildings

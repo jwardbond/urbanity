@@ -28,7 +28,7 @@ class TestRegion(unittest.TestCase):
 
         # Set output path and get rid of existing files
         networkpath = Path("./tests/test_files/test_files_road_network.geojson")
-        cls.network = utils.input_to_geodf(networkpath)
+        cls.network = utils.load_geojson(networkpath)
 
         cls.proj_crs = "EPSG:3347"
 
@@ -40,7 +40,7 @@ class TestRegion(unittest.TestCase):
         clust_width = 25
         point_precision = 2
 
-        generated = Region.from_network(
+        generated = Region.build_from_network(
             network=network,
             proj_crs=self.proj_crs,
             grid_size=grid_size,
@@ -51,14 +51,23 @@ class TestRegion(unittest.TestCase):
             point_precision=point_precision,
         )
 
-        loaded = Region.load_segments(
-            path_to_segments=Path("./tests/test_files/test_files_segments.geojson"),
+        loaded = Region.load_from_files(
+            segments_path=Path("./tests/test_files/test_files_segments.geojson"),
             proj_crs=self.proj_crs,
+            road_network_path=Path(
+                "./tests/test_files/test_files_road_network.geojson"
+            ),
+            buildings_path=Path("./tests/test_files/test_files_osm_buildings.geojson"),
         )
 
         # Test coordinate systems
         self.assertTrue("EPSG:4326", generated.segments.crs)
         self.assertTrue("EPSG:4326", loaded.segments.crs)
+
+        # Segments and buildings should have area
+        self.assertTrue("area" in loaded.buildings.data)
+        self.assertTrue("area" in loaded.segments)
+        self.assertTrue("area" in generated.segments)
 
         # Test that the segmentation generation is (still) running correctly
         assert_geodataframe_equal(generated.segments, loaded.segments)

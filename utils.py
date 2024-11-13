@@ -1,6 +1,6 @@
 import os
 import sys
-from pathlib import PurePath
+import pathlib
 
 import numpy as np
 import geopandas as gpd
@@ -18,27 +18,22 @@ class PrintColors:
     UNDERLINE = "\033[4m"
 
 
-def input_to_geodf(
-    x: gpd.geodataframe.GeoDataFrame | gpd.geoseries.GeoSeries | PurePath,
+def load_geojson(
+    x: str | pathlib.PurePath,
 ):
     """Util function used to parse function inputs."""
-    if isinstance(x, PurePath):
-        x = gpd.read_file(x)
-        x.set_crs("EPSG:4326", allow_override=False)
-        x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
-        x = x.fillna(value=np.nan)
-    elif isinstance(x, gpd.GeoDataFrame):
-        x = x.to_crs("EPSG:4326")
-    elif not (
-        isinstance(x, gpd.geodataframe.GeoDataFrame)
-        or isinstance(x, gpd.geoseries.GeoSeries)
-    ):
-        raise TypeError(f"Expected geodataframe or path to geojson, got {type(x)}")
+    if type(x) is str:
+        x = pathlib.Path(x)
+
+    x = gpd.read_file(x)
+    x.set_crs("EPSG:4326", allow_override=False)
+    x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
+    x = x.fillna(value=np.nan)
 
     return x
 
 
-def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: PurePath):
+def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: pathlib.PurePath):
     if savepath.exists():  # then prompt for overwrite
         prompt_success = False
         while not prompt_success:

@@ -10,9 +10,12 @@ import geopandas as gpd
 from genregion import generate_regions
 
 import utils
+from .buildings import Buildings
 
 # TODO add saving
 # TODO add adjacency attribute
+# TODO clarify docstring for returning Self / obj
+# TODO refactor to create a "buildings" class
 
 
 class Region:
@@ -22,10 +25,17 @@ class Region:
 
     Attributes:
         segments(gpd.GeoDataFrame): A geodataframe containing (at least) the polygon segments of a given region.
+        road_network(gpd.GeoDataFrame): A geodataframe containing the road network
         proj_crs(str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
     """
 
-    def __init__(self, segments: gpd.GeoDataFrame, proj_crs: str):
+    def __init__(
+        self,
+        segments: gpd.GeoDataFrame,
+        proj_crs: str,
+        road_network: gpd.GeoDataFrame = None,
+        buildings: Buildings = None,
+    ):
         if "area" not in segments:
             segments["area"] = segments.to_crs(proj_crs)["geometry"].area
 
@@ -34,11 +44,27 @@ class Region:
 
         self.proj_crs = proj_crs
         self.segments = segments
+        self.road_network = road_network
+        self._buildings = buildings
+
+    @property
+    def buildings(self):
+        if self._buildings is None:
+            raise AttributeError("Buildings data has not been set")
+        return self._buildings
+
+    @buildings.setter
+    def buildings(self, obj: Buildings):
+        if type(obj) is not Buildings:
+            raise TypeError("value must be a Buildings object")
+
+        self._buildings = obj
+        self._buildings.proj_crs = self.proj_crs
 
     @classmethod
-    def from_network(
+    def build_from_network(
         cls,
-        network: gpd.GeoDataFrame | gpd.GeoSeries | PurePath,
+        network: gpd.GeoDataFrame | gpd.GeoSeries,
         proj_crs: str,
         grid_size: int = 1024,
         min_area: int = 10000,
@@ -69,11 +95,6 @@ class Region:
             Region: An instance of Region with the segments in WGS84/EPSG:4326
         """
 
-        if isinstance(network, str):
-            network = Path(network)
-        if isinstance(network, PurePath):
-            network = utils.input_to_geodf(network)
-
         # Convert to projected crs
         network = network.to_crs(proj_crs)
         edges = network["geometry"].to_list()
@@ -102,12 +123,17 @@ class Region:
         segments["id"] = segments.index
         segments = segments[["id", "geometry"]]
 
-        return cls(segments, proj_crs)
+        return Region(segments, proj_crs, road_network=network)
 
     @classmethod
-    def load_segments(cls, path_to_segments: PurePath, proj_crs: str) -> Self:
-        """Loads pre-existing segments from a .geojson file
-
+    def load_from_files(
+        cls,
+        segments_path: PurePath,
+        proj_crs: str,
+        road_network_path: PurePath = None,
+        buildings_path: PurePath = None,
+    ) -> Self:
+        """Creates a Region object using saved .geojson files for the relevant attributes
         Args:
             path_to_segments (PurePath): The path to the .geojson containing pre-made segments
             proj_crs (str): The crs used for anything that requires projection, the value can be anything accepted by `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>` such as an authority string (eg "EPSG:4326") or a WKT string.
@@ -115,38 +141,44 @@ class Region:
         Returns:
             Region: An instance of Region with the segments in WGS84/EPSG:4326
         """
-        segments = utils.input_to_geodf(path_to_segments)
-        return cls(segments, proj_crs)
+        segments = utils.load_geojson(segments_path)
+        road_network = utils.load_geojson(road_network_path)
+
+        buildings = Buildings.read_geojson(buildings_path, proj_crs)
+
+        return cls(segments, proj_crs, road_network, buildings)
 
     def subtract_polygons(
         self,
-        polygons: gpd.GeoDataFrame | PurePath,
+        polygons: gpd.GeoDataFrame,
     ) -> Self:
         """Subtracts polygons from segments
 
         This is basically a wrapper for geopandas overlay diff.
 
         Args:
-            polygons (geopandas.GeoDataframe, pathlib.PurePath): Geodataframe of polygons to subtract, or path to a .geojson containing them.
+            polygons (geopandas.GeoDataframe): Geodataframe of polygons to subtract
 
         Returns:
-            Region: Returns a Region with the polygons subtracted
+            Region: Returns a new Region object
         """
 
         # Parse inputs
-        obj = copy.deepcopy(self)
-
-        polygons = utils.input_to_geodf(polygons)
-        polygons = polygons.copy(deep=True)
+        segments = self.segments.copy()
 
         # Get set difference
-        obj.segments = obj.segments.overlay(polygons, how="difference")
+        segments = segments.overlay(polygons, how="difference")
 
-        return obj
+        return Region(
+            segments=segments,
+            proj_crs=self.proj_crs,
+            road_network=self.road_network,
+            buildings=self._buildings,
+        )
 
     def agg_features(
         self,
-        polygons: gpd.GeoDataFrame | PurePath,
+        polygons: gpd.GeoDataFrame,
         feature_name: str,
         how: str = "mean",
         fillnan=None,
@@ -169,39 +201,40 @@ class Region:
         """
 
         # Parse inputs
-        obj = copy.deepcopy(self)
+        segments = self.segments.copy()
 
-        polygons = utils.input_to_geodf(polygons)
         polygons = polygons.copy()
 
         # Join
         right_gdf = polygons[["geometry", feature_name]]
-        joined = obj.segments.sjoin(right_gdf, how="left").drop("index_right", axis=1)
+        joined = segments.sjoin(right_gdf, how="left").drop("index_right", axis=1)
 
         if how == "mean":
             joined = joined.groupby("id")[feature_name].mean()
         else:
             raise ValueError("How must be one of: mean")
 
-        obj.segments = obj.segments.merge(joined, on="id")
+        segments = segments.merge(joined, on="id")
 
         if fillnan is not None:
-            obj.segments = obj.segments.fillna(value=fillnan)
+            segments = segments.fillna(value=fillnan)
 
-        return obj
+        return Region(
+            segments=segments,
+            proj_crs=self.proj_crs,
+            road_network=self.road_network,
+            buildings=self._buildings,
+        )
 
     def disagg_features(
-        self, gdf: gpd.GeoDataFrame | PurePath, feature_name: str, how: str = "area"
+        self, gdf: gpd.GeoDataFrame, feature_name: str, how: str = "area"
     ) -> Self:
         # Parse inputs
-        obj = copy.deepcopy(self)
-
-        gdf = utils.input_to_geodf(gdf)
-        gdf = gdf.copy()
+        segments = self.segments.copy()
         gdf = gdf[["geometry", feature_name]]
 
         # Change to projected crs
-        obj.segments = obj.segments.to_crs(self.proj_crs)
+        segments = segments.to_crs(self.proj_crs)
         gdf = gdf.to_crs(self.proj_crs)
 
         # Intersect dataframes
@@ -210,7 +243,7 @@ class Region:
 
             # Split the gdf by segment boundaries
             split_gdf = gpd.overlay(
-                gdf, obj.segments.drop(labels=["area"], axis=1), how="intersection"
+                gdf, segments.drop(labels=["area"], axis=1), how="intersection"
             )  # Dropping the area temporarily just helps with naming
 
             # Split feature proportional to area
@@ -224,18 +257,23 @@ class Region:
             # Join back to original df
             split_gdf = split_gdf[["id", fname]]
             grouped = split_gdf.groupby("id")[fname].sum()
-            obj.segments = obj.segments.merge(grouped, on="id", how="inner")
+            segments = segments.merge(grouped, on="id", how="inner")
 
             # change new column to original name
-            obj.segments = obj.segments.rename(columns={fname: feature_name})
+            segments = segments.rename(columns={fname: feature_name})
 
         else:
             raise ValueError(f"how = {how} is not a valid argument")
 
         # change back to original crs
-        obj.segments = obj.segments.to_crs("EPSG:4326")
+        segments = segments.to_crs("EPSG:4326")
 
-        return obj
+        return Region(
+            segments=segments,
+            proj_crs=self.proj_crs,
+            road_network=self.road_network,
+            buildings=self._buildings,
+        )
 
     def tile_segments(self, size, margin) -> Self:
         """Tiles all segments with squares `size` x `size`, with a gap of `margin` between them.
@@ -247,25 +285,25 @@ class Region:
             margin: The margin around tiles. Units will depend on `self.proj_crs`
 
         Returns:
-            Region: A copy of the `Region` object after tiling
+            obj: A copy of the `Region` object after tiling
         """
 
         # Project
-        obj = copy.deepcopy(self)
-        obj.segments = obj.segments.to_crs(self.proj_crs)
+        segments = self.segments.copy()
+        segments = segments.to_crs(self.proj_crs)
 
         # Get minimum rotated bounding rectangles
-        obj.segments["mrr"] = obj.segments.minimum_rotated_rectangle()
-        obj.segments["mrr_angle"] = obj.segments["mrr"].swifter.apply(
+        segments["mrr"] = segments.minimum_rotated_rectangle()
+        segments["mrr_angle"] = segments["mrr"].swifter.apply(
             lambda mrr: self._mrr_azimuth(mrr)
         )
 
         # Get a coordinate to rotate about
-        bounds = obj.segments["geometry"].bounds
-        obj.segments["rotation_point"] = list(zip(bounds["minx"], bounds["miny"]))
+        bounds = segments["geometry"].bounds
+        segments["rotation_point"] = list(zip(bounds["minx"], bounds["miny"]))
 
         # Rotate rectangles to be axis-aligned
-        obj.segments["mrr"] = obj.segments.swifter.apply(
+        segments["mrr"] = segments.swifter.apply(
             lambda row: shapely.affinity.rotate(
                 row.mrr, -1 * row.mrr_angle, row.rotation_point, use_radians=True
             ),
@@ -273,21 +311,21 @@ class Region:
         )
 
         # Add tiles
-        obj.segments[["p1", "p2", "p3", "p4"]] = obj.segments.swifter.apply(
+        segments[["p1", "p2", "p3", "p4"]] = segments.swifter.apply(
             lambda row: self._tile_rect(row.mrr, size, margin),
             axis=1,
             result_type="expand",
         )
 
         # Clip tiles to segments and select best tiling
-        obj.segments["tmp_geom"] = obj.segments.swifter.apply(
+        segments["tmp_geom"] = segments.swifter.apply(
             lambda row: shapely.affinity.rotate(
                 row.geometry, -1 * row.mrr_angle, row.rotation_point, use_radians=True
             ),
             axis=1,
         )
 
-        obj.segments[["best_tiling", "n_tiles"]] = obj.segments.swifter.apply(
+        segments[["best_tiling", "n_tiles"]] = segments.swifter.apply(
             lambda row: self._filter_multipolygon(
                 row.tmp_geom,
                 [
@@ -300,17 +338,22 @@ class Region:
             axis=1,
             result_type="expand",
         )
-        obj.segments = obj.segments.drop(labels=["p1", "p2", "p3", "p4"], axis=1)
+        segments = segments.drop(labels=["p1", "p2", "p3", "p4"], axis=1)
 
         # Rotate the best tiling to match the original geometry
-        obj.segments["best_tiling"] = obj.segments.swifter.apply(
+        segments["best_tiling"] = segments.swifter.apply(
             lambda row: shapely.affinity.rotate(
                 row.best_tiling, 1 * row.mrr_angle, row.rotation_point, use_radians=True
             ),
             axis=1,
         )
 
-        return obj
+        return Region(
+            segments=segments,
+            proj_crs=self.proj_crs,
+            road_network=self.road_network,
+            buildings=self._buildings,
+        )
 
     @classmethod
     def _subdivide_segments(
