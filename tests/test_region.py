@@ -1,20 +1,22 @@
+import copy
 import os
 import sys
-import copy
 import unittest
 import warnings
 from pathlib import Path
 
-
-import shapely
 import geopandas as gpd
+import shapely
 from geopandas.testing import assert_geodataframe_equal
 
-from urbanity import Region
 import utils
+from urbanity import Region
 
 os.environ["GDAL_DATA"] = os.path.join(
-    f"{os.sep}".join(sys.executable.split(os.sep)[:-1]), "Library", "share", "gdal"
+    f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
+    "Library",
+    "share",
+    "gdal",
 )  # HACK GDAL warning suppression
 
 
@@ -22,7 +24,8 @@ class TestRegion(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
         # Set output path and get rid of existing files
@@ -54,7 +57,7 @@ class TestRegion(unittest.TestCase):
             segments_path=Path("./tests/test_files/test_files_segments.geojson"),
             proj_crs=self.proj_crs,
             road_network_path=Path(
-                "./tests/test_files/test_files_road_network.geojson"
+                "./tests/test_files/test_files_road_network.geojson",
             ),
             buildings_path=Path("./tests/test_files/test_files_osm_buildings.geojson"),
         )
@@ -67,6 +70,10 @@ class TestRegion(unittest.TestCase):
         self.assertTrue("area" in loaded.buildings.data)
         self.assertTrue("area" in loaded.segments)
         self.assertTrue("area" in generated.segments)
+
+        # Segments should all have an id
+        self.assertTrue("id" in loaded.segments)
+        self.assertTrue("id" in generated.segments)
 
         # Test that the segmentation generation is (still) running correctly
         assert_geodataframe_equal(generated.segments, loaded.segments)
@@ -81,7 +88,7 @@ class TestRegion(unittest.TestCase):
                 (side_length * 8, 0),
                 (side_length * 8, side_length * 4),
                 (0, side_length * 4),
-            )
+            ),
         )
 
         wide_split_left = shapely.Polygon(
@@ -90,7 +97,7 @@ class TestRegion(unittest.TestCase):
                 (side_length * 4, 0),
                 (side_length * 4, side_length * 4),
                 (0, side_length * 4),
-            )
+            ),
         )
         wide_split_right = shapely.Polygon(
             (
@@ -98,7 +105,7 @@ class TestRegion(unittest.TestCase):
                 (side_length * 8, 0),
                 (side_length * 8, side_length * 4),
                 (side_length * 4, side_length * 4),
-            )
+            ),
         )
 
         # Tall polygons
@@ -132,7 +139,7 @@ class TestRegion(unittest.TestCase):
                 (side_length * 8, 0),
                 (side_length * 8, side_length * 4),
                 (0, side_length * 4),
-            )
+            ),
         )
 
         segments = gpd.GeoDataFrame(geometry=[poly, poly], crs=self.proj_crs)
@@ -149,13 +156,14 @@ class TestRegionFeatureMethods(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
         # Create a mock region
         square1 = shapely.Polygon([(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)])
         square2 = shapely.Polygon(
-            [(100, 0), (200, 0), (200, 100), (100, 100), (100, 0)]
+            [(100, 0), (200, 0), (200, 100), (100, 100), (100, 0)],
         )
         proj_crs = "EPSG:3347"
         segments = gpd.GeoDataFrame({"geometry": [square1, square2]}, crs=proj_crs)
@@ -170,7 +178,8 @@ class TestRegionFeatureMethods(unittest.TestCase):
         circle4 = shapely.Point(40, 80).buffer(20)
 
         buildings = gpd.GeoDataFrame(
-            {"geometry": [circle1, circle2, circle3, circle4]}, crs=proj_crs
+            {"geometry": [circle1, circle2, circle3, circle4]},
+            crs=proj_crs,
         )
         buildings["height"] = buildings["geometry"].area
         buildings["area"] = buildings["geometry"].area
@@ -211,7 +220,10 @@ class TestRegionFeatureMethods(unittest.TestCase):
         region = copy.deepcopy(self.region)
         polygons = copy.deepcopy(self.buildings)
         output = region.agg_features(
-            polygons, feature_name="height", how="mean", fillnan=0
+            polygons,
+            feature_name="height",
+            how="mean",
+            fillnan=0,
         )
 
         # region should be unchanged
@@ -239,7 +251,8 @@ class TestRegionFeatureMethods(unittest.TestCase):
         circle2 = shapely.Point(70, 20).buffer(15)
 
         polygons = gpd.GeoDataFrame(
-            {"geometry": [circle1, circle2]}, crs=region.proj_crs
+            {"geometry": [circle1, circle2]},
+            crs=region.proj_crs,
         )
         polygons["pop"] = polygons["geometry"].area
 

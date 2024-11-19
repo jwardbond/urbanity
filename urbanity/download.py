@@ -1,35 +1,37 @@
 import os
-import requests
-import warnings
 import tempfile
-from pathlib import Path, PurePath
+import warnings
+from pathlib import PurePath
 
-import shapely
-import osmnx as ox
-import numpy as np
-import pandas as pd
 import geopandas as gpd
-
-
-import utils
 
 # The following imports are all for microsoft building footprints
 import mercantile
+import numpy as np
+import osmnx as ox
+import pandas as pd
+import shapely
+
+import utils
 
 # TODO Handle missing boundaries (download square box)
 
 
-def download_osm_boundary(query: str, savefolder: PurePath = None):
-    """Downloads the bounding polygon for the queried region using open streetmaps
+def download_osm_boundary(
+    query: str,
+    savefolder: PurePath | None = None,
+) -> shapely.Polygon:
+    """Downloads the bounding polygon for the queried region using open streetmaps.
 
-    The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.geocoder.geocode_to_gdf>`
+    The coordinate system is WGS84 / EPSG:4326. For more information see
+    `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.geocoder.geocode_to_gdf>`
 
     Args:
         query (str): The region to geocode to get the bounding polygon. Can be place name or address]
         savefolder (pathlib.PurePath, optional): Save folder for downloaded polygon. Defaults to None (not saving)
 
     Returns:
-        shapely.geometry.polygon.Polygon: A shapely polygon representing the boundary of the queried region in EPSG:4326
+        polygon (shapely.Polygon): A shapely polygon representing the boundary of the queried region in EPSG:4326
     """
     print(f"Downloading boundaries for {query} from OSM...", end=" ")
     gdf_place = ox.geocoder.geocode_to_gdf(query)
@@ -46,9 +48,10 @@ def download_osm_boundary(query: str, savefolder: PurePath = None):
 
 
 def download_osm_network(
-    boundary: PurePath | shapely.Polygon, savefolder: PurePath = None
-):
-    """Download the street network within some polygon boundary
+    boundary: PurePath | shapely.Polygon,
+    savefolder: PurePath | None = None,
+) -> gpd.GeoDataFrame:
+    """Download the street network within some polygon boundary.
 
     The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.graph.graph_from_polygon>`
 
@@ -57,19 +60,18 @@ def download_osm_network(
         savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
 
     Returns:
-        geopandas.GeoDataframe: The road network as a geojson list of edges in WGS84 / EPSG:4326
+        network (geopandas.GeoDataframe): The road network as a geodataframe list of edges in WGS84 / EPSG:4326
     """
-
     # Parse polygon if required
     boundary = _parse_polygon(boundary)
 
     # Get graph from OSM
     print("Downloading road network from OSM...", end=" ")
-    G = ox.graph_from_polygon(boundary, network_type="drive", simplify=False)
+    g = ox.graph_from_polygon(boundary, network_type="drive", simplify=False)
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
-    M = ox.convert.to_undirected(G)
-    _, network = ox.convert.graph_to_gdfs(M)
+    m = ox.convert.to_undirected(g)
+    _, network = ox.convert.graph_to_gdfs(m)
 
     # Correctly format output
     network = network.reset_index()
@@ -87,9 +89,10 @@ def download_osm_network(
 
 
 def download_osm_buildings(
-    boundary: PurePath | shapely.Polygon, savefolder: PurePath = None
-):
-    """Download the building polygons from open street maps within some polygon boundary
+    boundary: PurePath | shapely.Polygon,
+    savefolder: PurePath | None = None,
+) -> gpd.GeoDataFrame:
+    """Download the building polygons from open street maps within some polygon boundary.
 
     The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>`.
 
@@ -98,9 +101,8 @@ def download_osm_buildings(
         savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
 
     Returns:
-        geopandas.GeoDataframe: A geodataframe of all buildings within the provided boundary in WGS84 / EPSG:4326
+        buildings (geopandas.GeoDataframe): A geodataframe of all buildings within the provided boundary in WGS84 / EPSG:4326
     """
-
     # Parse polygon if required
     boundary = _parse_polygon(boundary)
 
@@ -147,10 +149,10 @@ def download_osm_buildings(
 def download_osm_generic(
     boundary: PurePath | shapely.Polygon,
     tags: dict,
-    savefolder: PurePath = None,
+    savefolder: PurePath | None = None,
     savename: str = "custom",
-):
-    """Download generic features from OSMwithin some polygon boundary
+) -> gpd.GeoDataFrame:
+    """Download generic features from OSMwithin some polygon boundary.
 
     The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>`.
 
@@ -163,7 +165,6 @@ def download_osm_generic(
     Returns:
         geopandas.GeoDataframe: A geodataframe of all features within the provided boundary in WGS84 / EPSG:4326
     """
-
     # Parse polygon if required
     boundary = _parse_polygon(boundary)
 
@@ -193,15 +194,11 @@ def download_osm_generic(
     return gdf
 
 
-def download_rsi(boundary_path: PurePath):  # TODO complete function
-    pass
-
-
 def download_ms_buildings(
     boundary: PurePath | shapely.Polygon,
-    savefolder: PurePath = None,
-):
-    """Download the building polygon data within a given boundary
+    savefolder: PurePath | None = None,
+) -> gpd.GeoDataFrame:
+    """Download the building polygon data within a given boundary.
 
     The coordinate system is WGS84 / EPSG:4326.
     Most of the code is adapted from `here <https://github.com/microsoft/GlobalMLBuildingFootprints/blob/main/examples/example_building_footprints.ipynb>`.
@@ -211,8 +208,8 @@ def download_ms_buildings(
         savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
 
     Returns:
+        buildings (geopandas.GeoDataFrame): A geodataframe of building polygons in EPSG:4326
     """
-
     # Parse polygon if required
     boundary = _parse_polygon(boundary)
 
@@ -225,7 +222,7 @@ def download_ms_buildings(
     ]
 
     df = pd.read_csv(
-        "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
+        "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv",
     )
 
     # Load tiles to temp dir
@@ -250,9 +247,11 @@ def download_ms_buildings(
                 if not os.path.exists(fn):
                     gdf.to_file(fn, driver="GeoJSON")
             elif rows.shape[0] > 1:
-                raise ValueError(f"Multiple rows found for QuadKey: {quad_key}")
+                msg = f"Multiple rows found for QuadKey: {quad_key}"
+                raise ValueError(msg)
             else:
-                raise ValueError(f"QuadKey not found in dataset: {quad_key}")
+                msg = f"QuadKey not found in dataset: {quad_key}"
+                raise ValueError(msg)
         print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
         # Merge the GeoJSON files into a single file
@@ -281,21 +280,15 @@ def download_ms_buildings(
     return buildings
 
 
-def download_worldpop(
-    country: str,
-):
-    pass
-
-
 def _parse_polygon(
     polygon: PurePath | shapely.Polygon,
-):  # TODO not sure I like this function.
-    """Parses polygon representations to return a shapely polygon"""
-
+):
+    """Parses polygon representations to return a shapely polygon."""
     if isinstance(polygon, PurePath):
         polygon = gpd.read_file(polygon).iloc[0]["geometry"]
     elif not isinstance(polygon, shapely.Polygon):
-        raise TypeError(f"Expected shapely polygon or Path, got {type(polygon)}")
+        msg = f"Expected shapely polygon or Path, got {type(polygon)}"
+        raise TypeError(msg)
 
     return polygon
 

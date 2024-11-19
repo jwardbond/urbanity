@@ -1,31 +1,34 @@
 import pathlib
 from typing import Self
 
-import numpy as np
 import geopandas as gpd
+import numpy as np
 
 from utils import load_geojson
 
 
 class Buildings:
     def __init__(self, data: gpd.GeoDataFrame, proj_crs: str):
+        data = data.to_crs("EPSG:4326")  # Default crs
+
         if "area" not in data:
             data["area"] = data.to_crs(proj_crs)["geometry"].area
         if "id" not in data:
             data.insert(loc=0, column="id", value=range(len(data)))
 
-        data = data.to_crs("EPSG:4326")  # default crs
-
         self.data = data
         self.proj_crs = proj_crs
 
     @classmethod
-    def read_geojson(cls, data: pathlib.PurePath, proj_crs: str):
+    def read_geojson(cls, data: pathlib.PurePath, proj_crs: str) -> Self:
         data = load_geojson(data)  # FIXME ultimate goal to maybe not rely on utils
         return cls(data, proj_crs)
 
     def create_volume_flag(
-        self, min_vol: float, max_vol: float, flag_name: str
+        self,
+        min_vol: float,
+        max_vol: float,
+        flag_name: str,
     ) -> Self:
         """Selects buildings within a given volume range.
 
@@ -47,14 +50,15 @@ class Buildings:
         data = self.data
 
         if "height" not in data:
-            raise AttributeError('building data does not contain a "height" column')
+            msg = 'building data does not contain a "height" column'
+            raise AttributeError(msg)
 
         if "volume" not in data:
             data["volume"] = data["area"] * data["height"]
 
         # Filtering by volume
         data[flag_name] = data["volume"].map(
-            lambda x: (x >= min_vol) and (x <= max_vol)
+            lambda x: (x >= min_vol) and (x <= max_vol),
         )
 
         return Buildings(data, self.proj_crs)
@@ -62,21 +66,24 @@ class Buildings:
     def calc_floors(
         self,
         floor_height: float = 2.75,
-        floor_breakpoints: list[float] = None,
-        type_col: str = None,
-    ):
+        floor_breakpoints: list[float] | None = None,
+        type_col: str | None = None,
+    ) -> Self:
         """Filters buildings by volume and assigns floor counts based on height.
 
         Make sure units match the units of height you have in buildings.data
 
         Args:
             floor_height (float): Height per floor. Defaults to 2.75.
-            floor_breakpoints (list[float], optional): Custom height breakpoints for floors. Defaults to None (will construct from floor height).
-            type_col (str): The name for the building type. Defaults to "sfh" (single family home)
+            floor_breakpoints (list[float], optional): Custom height breakpoints for
+                floors. Defaults to None (will construct from floor height).
+            type_col (str): The name for the building type. Defaults to "sfh"
+                (single family home)
 
         Returns:
             object: A copy of the object with an updated `buildings` attribute, containing:
-                - 'floors': Estimated floor count based on height and breakpoints or floor height.
+                - 'floors': Estimated floor count based on height and breakpoints or
+                            floor height.
 
         Raises:
             AttributeError: If the `buildings` attribute is not set.
@@ -92,8 +99,10 @@ class Buildings:
 
         breakpoints = breakpoints + list(
             np.arange(
-                breakpoints[-1] + floor_height, max_height + floor_height, floor_height
-            )
+                breakpoints[-1] + floor_height,
+                max_height + floor_height,
+                floor_height,
+            ),
         )
 
         breakpoints = np.array(breakpoints)
@@ -101,7 +110,7 @@ class Buildings:
         if type_col is not None:
             data["floors"] = data.apply(
                 lambda r: np.nanargmax(
-                    np.where(breakpoints < r.height, breakpoints, np.nan)
+                    np.where(breakpoints < r.height, breakpoints, np.nan),
                 )
                 if r[type_col]
                 else 0,
@@ -109,7 +118,7 @@ class Buildings:
             )
         else:
             data["floors"] = data["height"].map(
-                lambda h: np.nanargmax(np.where(breakpoints < h, breakpoints, np.nan))
+                lambda h: np.nanargmax(np.where(breakpoints < h, breakpoints, np.nan)),
             )
 
         data["floors"] = data["floors"].astype(int)

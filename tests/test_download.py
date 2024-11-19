@@ -1,19 +1,20 @@
 import os
 import sys
-
 import unittest
 import warnings
 from pathlib import Path
 
-import numpy as np
 import geopandas as gpd
 from geopandas.testing import assert_geodataframe_equal
 
-import utils
 import urbanity.download as ud
+import utils
 
 os.environ["GDAL_DATA"] = os.path.join(
-    f"{os.sep}".join(sys.executable.split(os.sep)[:-1]), "Library", "share", "gdal"
+    f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
+    "Library",
+    "share",
+    "gdal",
 )  # HACK GDAL warning suppression
 
 
@@ -27,7 +28,8 @@ class TestDownloadOSMBoundary(unittest.TestCase):
 
     def setUp(self) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
     def test_download_osm_boundary(self) -> None:
@@ -60,7 +62,8 @@ class DownloadOSMNetwork(unittest.TestCase):
 
     def setUp(self) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
     # delete existing files
@@ -71,7 +74,8 @@ class DownloadOSMNetwork(unittest.TestCase):
 
         with utils.HiddenPrints():
             network = ud.download_osm_network(
-                boundarypath, savefolder=networkpath.parent
+                boundarypath,
+                savefolder=networkpath.parent,
             )
 
         # Test that the output file exists
@@ -81,7 +85,7 @@ class DownloadOSMNetwork(unittest.TestCase):
         self.assertEqual("EPSG:4326", network.crs)
 
         # test that ouputs match
-        network_from_file = utils.input_to_geodf(networkpath)
+        network_from_file = utils.load_geojson(networkpath)
         assert_geodataframe_equal(network, network_from_file)
 
     def test_download_error(self):
@@ -100,7 +104,8 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 
     def setUp(self) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
     def test_download_from_file(self):
@@ -109,7 +114,8 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 
         with utils.HiddenPrints():
             buildings = ud.download_osm_buildings(
-                boundarypath, savefolder=buildingspath.parent
+                boundarypath,
+                savefolder=buildingspath.parent,
             )
 
         # Test that the output file exists
@@ -119,7 +125,7 @@ class TestDownloadOSMBuildings(unittest.TestCase):
         self.assertEqual("EPSG:4326", buildings.crs)
 
         # test that ouputs match
-        buildings_from_file = utils.input_to_geodf(buildingspath)
+        buildings_from_file = utils.load_geojson(buildingspath)
         assert_geodataframe_equal(buildings, buildings_from_file)
 
     def test_download_error(self):
@@ -138,7 +144,8 @@ class TestDownloadMSBuildings(unittest.TestCase):
 
     def setUp(self) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
     def test_download_from_file(self):
@@ -147,7 +154,8 @@ class TestDownloadMSBuildings(unittest.TestCase):
 
         with utils.HiddenPrints():
             buildings = ud.download_ms_buildings(
-                boundarypath, savefolder=buildingspath.parent
+                boundarypath,
+                savefolder=buildingspath.parent,
             )
 
         # Test that the output file exists
@@ -157,7 +165,7 @@ class TestDownloadMSBuildings(unittest.TestCase):
         self.assertEqual("EPSG:4326", buildings.crs)
 
         # test that ouputs match
-        buildings_from_file = utils.input_to_geodf(buildingspath)
+        buildings_from_file = utils.load_geojson(buildingspath)
         assert_geodataframe_equal(buildings, buildings_from_file)
 
     def test_download_error(self):

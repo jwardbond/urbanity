@@ -4,23 +4,25 @@ import unittest
 import warnings
 from pathlib import Path
 
-
-import shapely
 import geopandas as gpd
-
-from urbanity import Buildings
+import shapely
 from geopandas.testing import assert_geodataframe_equal
 
+from urbanity import Buildings
 
 os.environ["GDAL_DATA"] = os.path.join(
-    f"{os.sep}".join(sys.executable.split(os.sep)[:-1]), "Library", "share", "gdal"
+    f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
+    "Library",
+    "share",
+    "gdal",
 )  # HACK GDAL warning suppression
 
 
 class TestBuildings(unittest.TestCase):
     def setUp(self) -> None:
         warnings.simplefilter(
-            "ignore", category=DeprecationWarning
+            "ignore",
+            category=DeprecationWarning,
         )  # HACK geopandas warning suppression
 
         # Create a mock region
@@ -80,7 +82,9 @@ class TestBuildings(unittest.TestCase):
         buildings = self.buildings
 
         buildings = buildings.create_volume_flag(
-            min_vol=600, max_vol=2000, flag_name="sfh"
+            min_vol=600,
+            max_vol=2000,
+            flag_name="sfh",
         )
         buildings = buildings.calc_floors(floor_height=5, type_col="sfh")
 
