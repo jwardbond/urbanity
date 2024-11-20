@@ -4,7 +4,7 @@ from typing import Self
 import geopandas as gpd
 import numpy as np
 
-from utils import load_geojson
+import utils
 
 
 class Buildings:
@@ -21,7 +21,9 @@ class Buildings:
 
     @classmethod
     def read_geojson(cls, data: pathlib.PurePath, proj_crs: str) -> Self:
-        data = load_geojson(data)  # FIXME ultimate goal to maybe not rely on utils
+        data = utils.load_geojson(
+            data
+        )  # FIXME ultimate goal to maybe not rely on utils
         return cls(data, proj_crs)
 
     def create_volume_flag(
@@ -124,3 +126,36 @@ class Buildings:
         data["floors"] = data["floors"].astype(int)
 
         return Buildings(data, self.proj_crs)
+
+    def sjoin_building_features(
+        self,
+        df2: gpd.GeoDataFrame,
+        variables: list[str],
+    ) -> Self:
+        """Spatial join features from the most overlapping building in another dataset.
+
+        Performs a spatial join between the building features in the current object
+        and another GeoDataFrame. Retains the feature with the greatest intersection
+        for each building.
+
+        Args:
+            df2 (gpd.GeoDataFrame): The GeoDataFrame to spatially join with the buildings.
+            variables (list): A list of the variables (column names) from df2 that you want to add
+
+        Returns:
+            Self: A new `Buildings` object containing the joined data.
+        """
+        data = self.data
+        df2 = df2.copy()
+        original_geom = data[["id", "geometry"]]
+
+        data = data.to_crs(self.proj_crs)
+        df2 = df2.to_crs(self.proj_crs)
+
+        new_data = utils.sjoin_greatest_intersection(data, df2, variables)
+
+        new_data = new_data.drop("geometry", axis=1)
+        new_data = original_geom.merge(new_data, on="id", how="inner")
+        new_data.crs = original_geom.crs
+
+        return Buildings(new_data, self.proj_crs)
