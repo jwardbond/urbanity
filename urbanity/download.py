@@ -119,6 +119,7 @@ def download_osm_buildings(
     # Correctly format output
     buildings = buildings.reset_index()
     buildings.index = buildings.index.astype(np.int64)
+    buildings.osmid = buildings.osmid.astype(np.int32)
 
     # The next two lines of code are rather needlessly complicated and just
     # select only desired columns from the gdf, while allowing for the condition
@@ -235,20 +236,18 @@ def download_ms_buildings(
         tmp_fns = []
         for quad_key in quad_keys:
             rows = df[df["QuadKey"] == quad_key]
-            if rows.shape[0] == 1:
-                url = rows.iloc[0]["Url"]
+            if rows.shape[0] >= 1:
+                for _, r in rows.iterrows():
+                    url = r["Url"]
 
-                df2 = pd.read_json(url, lines=True)
-                df2["geometry"] = df2["geometry"].apply(shapely.geometry.shape)
+                    df2 = pd.read_json(url, lines=True)
+                    df2["geometry"] = df2["geometry"].apply(shapely.geometry.shape)
 
-                gdf = gpd.GeoDataFrame(df2, crs=4326)
-                fn = os.path.join(tmpdir, f"{quad_key}.geojson")
-                tmp_fns.append(fn)
-                if not os.path.exists(fn):
-                    gdf.to_file(fn, driver="GeoJSON")
-            elif rows.shape[0] > 1:
-                msg = f"Multiple rows found for QuadKey: {quad_key}"
-                raise ValueError(msg)
+                    gdf = gpd.GeoDataFrame(df2, crs=4326)
+                    fn = os.path.join(tmpdir, f"{quad_key}.geojson")
+                    tmp_fns.append(fn)
+                    if not os.path.exists(fn):
+                        gdf.to_file(fn, driver="GeoJSON")
             else:
                 msg = f"QuadKey not found in dataset: {quad_key}"
                 raise ValueError(msg)
