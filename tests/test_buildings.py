@@ -65,9 +65,9 @@ class TestBuildings(unittest.TestCase):
         # They should both have the same projected crs system
         self.assertEqual(saved.proj_crs, new.proj_crs)
 
-    def test_create_volume_flag(self) -> None:
+    def test_create_size_flag(self) -> None:
         b = self.buildings
-        buildings = b.create_volume_flag(min_vol=600, max_vol=2000, flag_name="sfh")
+        buildings = b.create_size_flag(min_vol=600, max_vol=2000, flag_name="sfh")
 
         # The column should be added
         self.assertTrue("sfh" in buildings.data)
@@ -81,7 +81,7 @@ class TestBuildings(unittest.TestCase):
     def test_calc_floors_no_breakpoints(self) -> None:
         buildings = self.buildings
 
-        buildings = buildings.create_volume_flag(
+        buildings = buildings.create_size_flag(
             min_vol=600,
             max_vol=2000,
             flag_name="sfh",

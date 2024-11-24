@@ -21,16 +21,27 @@ class Buildings:
 
     @classmethod
     def read_geojson(cls, data: pathlib.PurePath, proj_crs: str) -> Self:
+        """Load .geojson file containing building footprints.
+
+        Args:
+            data (pathlib.PurePath): path to file
+            proj_crs (str): crs to use for projections
+
+        Returns:
+            Self: an instance of Buildings
+        """
         data = utils.load_geojson(
             data
         )  # FIXME ultimate goal to maybe not rely on utils
         return cls(data, proj_crs)
 
-    def create_volume_flag(
+    def create_size_flag(
         self,
         min_vol: float,
         max_vol: float,
         flag_name: str,
+        min_area: float = 0,
+        max_area: float = np.inf,
     ) -> Self:
         """Selects buildings within a given volume range.
 
@@ -58,9 +69,13 @@ class Buildings:
         if "volume" not in data:
             data["volume"] = data["area"] * data["height"]
 
-        # Filtering by volume
-        data[flag_name] = data["volume"].map(
-            lambda x: (x >= min_vol) and (x <= max_vol),
+        # Filtering by size
+        data[flag_name] = data.apply(
+            lambda r: (r.volume >= min_vol)
+            and (r.volume <= max_vol)
+            and (r.area >= min_area)
+            and (r.area <= max_area),
+            axis=1,
         )
 
         return Buildings(data, self.proj_crs)
@@ -83,7 +98,7 @@ class Buildings:
                 (single family home)
 
         Returns:
-            object: A copy of the object with an updated `buildings` attribute, containing:
+            Self: A copy of the Buildings with an updated `buildings` attribute, containing:
                 - 'floors': Estimated floor count based on height and breakpoints or
                             floor height.
 
@@ -145,7 +160,7 @@ class Buildings:
         Returns:
             Self: A new `Buildings` object containing the joined data.
         """
-        data = self.data
+        data = self.data.copy()
         df2 = df2.copy()
         original_geom = data[["id", "geometry"]]
 
