@@ -67,16 +67,22 @@ class TestBuildings(unittest.TestCase):
 
     def test_create_size_flag(self) -> None:
         b = self.buildings
-        buildings = b.create_size_flag(min_vol=600, max_vol=2000, flag_name="sfh")
+        buildings = b.create_size_flag(
+            min_vol=500,
+            max_vol=2000,
+            flag_name="sfh",
+            min_area=51,
+            max_area=79,
+        )
 
         # The column should be added
         self.assertTrue("sfh" in buildings.data)
 
         # Correct buildings are flagged
-        self.assertFalse(buildings.data.iloc[0]["sfh"])
-        self.assertTrue(buildings.data.iloc[1]["sfh"])
+        self.assertFalse(buildings.data.iloc[0]["sfh"])  # Area 50 < 51
+        self.assertFalse(buildings.data.iloc[1]["sfh"])  # Area 80 > 79
         self.assertTrue(buildings.data.iloc[2]["sfh"])
-        self.assertFalse(buildings.data.iloc[3]["sfh"])
+        self.assertFalse(buildings.data.iloc[3]["sfh"])  # Volume 2250 > 2000
 
     def test_calc_floors_no_breakpoints(self) -> None:
         buildings = self.buildings
