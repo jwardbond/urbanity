@@ -16,7 +16,7 @@ from .buildings import Buildings
 # TODO add saving
 # TODO add adjacency attribute
 # TODO clarify docstring for returning Self / obj
-# TODO refactor to create a "buildings" class
+# TODO Add crs checking in init
 
 
 class Region:
@@ -50,7 +50,7 @@ class Region:
         self.proj_crs = proj_crs
         self.segments = segments
         self.road_network = road_network
-        self._buildings = buildings
+        self.buildings = buildings  # property
 
     @property
     def buildings(self) -> Buildings:
@@ -61,12 +61,18 @@ class Region:
 
     @buildings.setter
     def buildings(self, obj: Buildings):
-        if type(obj) is not Buildings:
-            msg = "value must be a Buildings object"
-            raise TypeError(msg)
+        if obj is None:
+            self._buildings = None
+        else:
+            if type(obj) is not Buildings:
+                msg = "value must be a Buildings object"
+                raise TypeError(msg)
+            if obj.data.crs != "EPSG:4326":
+                msg = "Building data must be in EPSG:4326"
+                raise ValueError(msg)
 
-        self._buildings = obj
-        self._buildings.proj_crs = self.proj_crs
+            self._buildings = obj
+            self._buildings.proj_crs = self.proj_crs
 
     @classmethod
     def build_from_network(
@@ -101,7 +107,7 @@ class Region:
         Returns:
             Region: An instance of Region with the segments in WGS84/EPSG:4326
         """
-        # Convert to projected crs
+        # Convert to projected crs\
         network = network.to_crs(proj_crs)
         edges = network["geometry"].to_list()
 
@@ -188,6 +194,47 @@ class Region:
             buildings=self._buildings,
         )
 
+    def flag_segments(
+        self,
+        flag_name: str,
+        threshold_pct: float,
+        threshold_num: int,
+        building_flag: str,
+    ) -> Self:
+        if building_flag not in self.buildings.data:
+            msg = f"No flag named {building_flag} found in building data"
+            raise KeyError(msg)
+
+        # TODO keep in mind that the following is a common operation and might be good to abstract so
+        # I am not running it all the time
+        segments = self.segments
+        buildings = self.buildings[["geometry", building_flag]]
+
+        joined = segments[["id", "geometry"]].sjoin(
+            buildings, how="left", predicate="within"
+        )
+        # end todo
+
+        # Calculate the sum and % of buildings within each segment
+        joined = joined.groupby("id", as_index=False)[building_flag].agg(
+            mean_flag=(building_flag, "mean"),
+            sum_flag=(building_flag, "sum"),
+        )
+
+        joined[flag_name] = joined.apply(
+            lambda r: (r.sum_flag > threshold_num) and (r.mean_flag > threshold_pct),
+            axis=1,
+        )
+
+        segments = segments.merge(joined, on="id", how="left")
+
+        return Region(
+            segments=segments,
+            proj_crs=self.proj_crs,
+            road_network=self.road_network,
+            buildings=self._buildings,
+        )
+
     def agg_features(
         self,
         polygons: gpd.GeoDataFrame,
@@ -261,7 +308,7 @@ class Region:
         segments = self.segments.copy()
         gdf = gdf[["geometry", feature_name]]
 
-        # Change to projected crs
+        # Change to projected crs #TODO conserve geometry column for irreversible crs change
         segments = segments.to_crs(self.proj_crs)
         gdf = gdf.to_crs(self.proj_crs)
 

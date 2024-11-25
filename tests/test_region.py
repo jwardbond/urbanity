@@ -10,7 +10,7 @@ import shapely
 from geopandas.testing import assert_geodataframe_equal
 
 import utils
-from urbanity import Region
+from urbanity import Region, Buildings
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -293,4 +293,100 @@ class TestRegionFeatureMethods(unittest.TestCase):
         )
 
     def test_tiling(self) -> None:
+        # TODO
         pass
+
+    class test_region_building_methods(unittest.TestCase):
+        def setUp(self) -> None:
+            warnings.simplefilter(
+                "ignore",
+                category=DeprecationWarning,
+            )  # HACK geopandas warning suppression
+
+            self.proj_crs = "EPSG:3347"
+
+            # Create two large squares
+            seg1 = shapely.Polygon([(0, 0), (0, 10), (10, 10), (10, 0), (0, 0)])
+            seg2 = shapely.Polygon([(20, 0), (20, 10), (30, 10), (30, 0), (20, 0)])
+            seg3 = shapely.Polygon([(40, 0), (40, 10), (50, 10), (50, 0), (40, 0)])
+
+            segments = gpd.GeoDataFrame(
+                {"id": [0, 1]},
+                geometry=[seg1, seg2, seg3],
+                crs=self.proj_crs,
+            )
+
+            segments = segments.to_crs("EPSG:4326")
+            self.region = Region(segments, self.proj_crs)
+
+            # Create four smaller polygons, two in each large square
+            # In segment 1
+            building1 = shapely.Polygon([(1, 1), (1, 3), (3, 3), (3, 1), (1, 1)])
+            building2 = shapely.Polygon([(4, 1), (4, 3), (6, 3), (6, 1), (4, 1)])
+            building3 = shapely.Polygon([(7, 1), (7, 3), (9, 3), (9, 1), (7, 1)])
+            building4 = shapely.Polygon([(1, 6), (1, 8), (3, 8), (3, 6), (1, 6)])
+            building5 = shapely.Polygon([(6, 6), (6, 8), (8, 8), (8, 6), (6, 6)])
+            building6 = shapely.Polygon([(9, 6), (9, 8), (11, 8), (11, 6), (9, 6)])
+
+            # in segment 2
+            building7 = shapely.Polygon([(21, 1), (21, 3), (23, 3), (23, 1), (21, 1)])
+            building8 = shapely.Polygon([(24, 1), (24, 3), (26, 3), (26, 1), (24, 1)])
+            building9 = shapely.Polygon([(21, 6), (21, 8), (23, 8), (23, 6), (21, 6)])
+            building10 = shapely.Polygon([(24, 6), (24, 8), (26, 8), (26, 6), (24, 6)])
+
+            # in segment 3
+            building11 = shapely.Polygon([(41, 1), (41, 3), (43, 3), (43, 1), (41, 1)])
+            building12 = shapely.Polygon([(46, 1), (46, 3), (48, 3), (48, 1), (46, 1)])
+
+            # 6 sfh in first segment, 4 in second, 2 in third
+            buildings = gpd.GeoDataFrame(
+                {"id": list(range(12)), "sfh": [1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1]},
+                geometry=[
+                    building1,
+                    building2,
+                    building3,
+                    building4,
+                    building5,
+                    building6,
+                    building7,
+                    building8,
+                    building9,
+                    building10,
+                    building11,
+                    building12,
+                ],
+                crs=self.proj_crs,
+            )
+            buildings = buildings.to_crs("EPSG:4236")
+            buildings = Buildings(buildings, self.proj_crs)
+
+            self.region.buildings = self.buildings
+
+        def test_flag_segments(self):
+            region = self.region
+            old_segments = region.segments.copy()
+
+            region = region.flag_segments(
+                flag_name="sfh",
+                threshold_pct=0.7,
+                threshold_num=3,
+                building_flag="sfh",
+            )
+
+            segments = region.segments
+
+            # Columns should be the same + one new column
+            self.assertTrue("sfh" in segments)
+            self.assertTrue(all(col in segments for col in old_segments.columns))
+
+            # Data should be unchanged without the new column
+            assert_geodataframe_equal(segments.drop(columns=["sfh"]), old_segments)
+
+            # Segment 1 should not be flagged (threshold pct is 4/6 <= 0.7)
+            self.assertFalse(segments.iloc[0]["sfh"])
+
+            # Segment 2 should be flagged (threshold pct is 3/4 >= 0.7)
+            self.assertTrue(segments.iloc[1]["sfh"])
+
+            # Segment 3 should not be flagged (threshold num is 2 <= 3)
+            self.assertFale(segments.iloc[2]["sfh"])
