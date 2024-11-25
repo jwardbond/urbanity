@@ -211,7 +211,9 @@ class Region:
         buildings = self.buildings[["geometry", building_flag]]
 
         joined = segments[["id", "geometry"]].sjoin(
-            buildings, how="left", predicate="within"
+            buildings,
+            how="left",
+            predicate="within",
         )
         # end todo
 

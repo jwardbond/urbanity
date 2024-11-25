@@ -10,7 +10,7 @@ import shapely
 from geopandas.testing import assert_geodataframe_equal
 
 import utils
-from urbanity import Region, Buildings
+from urbanity import Buildings, Region
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -296,7 +296,7 @@ class TestRegionFeatureMethods(unittest.TestCase):
         # TODO
         pass
 
-    class test_region_building_methods(unittest.TestCase):
+    class TestRegionMethodsWithBuildings(unittest.TestCase):
         def setUp(self) -> None:
             warnings.simplefilter(
                 "ignore",

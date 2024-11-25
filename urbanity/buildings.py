@@ -31,7 +31,7 @@ class Buildings:
             Self: an instance of Buildings
         """
         data = utils.load_geojson(
-            data
+            data,
         )  # FIXME ultimate goal to maybe not rely on utils
         return cls(data, proj_crs)
 
@@ -51,6 +51,8 @@ class Buildings:
             min_vol (float): Minimum volume for filtering in cubic units
             max_vol (float): Maximum volume for filtering in cubic units
             flag_name (str): The name for the building type (e.g. "sfh")
+            min_area: (float): The minimum footprint area for the building type
+            max_area: (float): The maximmum footprint area for the building type
 
         Returns:
             object: A copy of the object with an updated `buildings` attribute, containing:
