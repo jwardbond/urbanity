@@ -3,9 +3,9 @@ import pathlib
 import sys
 import warnings
 
-import pandas as pd
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import shapely
 
 
@@ -115,6 +115,36 @@ def sjoin_greatest_intersection(
         target_df[v] = arr
 
     return target_df
+
+
+def order_closest_vertices(
+    p: shapely.Polygon,
+    target: shapely.Polygon,
+) -> list:
+    """Order the exterior vertices of a polygon, according to their proximity to the boundaries of another polygon.
+
+    Args:
+        p (shapely.Polygon): _description_
+        target (shapely.Polygon): _description_
+
+    Returns:
+        list: a list of exterior vertices of p, ordered by their proximity to target
+    """
+    ordered_points = []  # (point, distance)
+
+    target = target.exterior
+
+    for vertex in list(p.exterior.coords):
+        v = shapely.Point(vertex)
+        distance = target.distance(v)
+        ordered_points.append((v, distance))
+
+    # Remove duplicate points
+    ordered_points = list(set(ordered_points))
+
+    ordered_points = sorted(ordered_points, key=lambda x: x[1])
+
+    return [x[0] for x in ordered_points]
 
 
 class HiddenPrints:

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import shapely
 import shapely.ops
+import swifter
 from genregion import generate_regions
 
 import utils
@@ -17,6 +18,8 @@ from .buildings import Buildings
 # TODO add adjacency attribute
 # TODO clarify docstring for returning Self / obj
 # TODO Add crs checking in init
+# TODO make returning more sensible, will require figuring out correct copy logic
+# TODO there is some real fucky copying stuff happening here
 
 
 class Region:
@@ -194,7 +197,7 @@ class Region:
             buildings=self._buildings,
         )
 
-    def flag_segments(
+    def flag_segments_by_buildings(
         self,
         flag_name: str,
         threshold_pct: float,
@@ -208,25 +211,28 @@ class Region:
         # TODO keep in mind that the following is a common operation and might be good to abstract so
         # I am not running it all the time
         segments = self.segments
-        buildings = self.buildings[["geometry", building_flag]]
+        buildings = self.buildings.data[["geometry", building_flag]]
 
         joined = segments[["id", "geometry"]].sjoin(
             buildings,
             how="left",
-            predicate="within",
+            predicate="intersects",
         )
         # end todo
 
-        # Calculate the sum and % of buildings within each segment
-        joined = joined.groupby("id", as_index=False)[building_flag].agg(
-            mean_flag=(building_flag, "mean"),
-            sum_flag=(building_flag, "sum"),
+        # Calculate the sum and fraction of buildings within each segment
+        joined = joined.groupby("id", as_index=False).agg(
+            mean_flag=(f"{building_flag}", "mean"),
+            sum_flag=(f"{building_flag}", "sum"),
         )
 
         joined[flag_name] = joined.apply(
-            lambda r: (r.sum_flag > threshold_num) and (r.mean_flag > threshold_pct),
+            lambda r: (r.sum_flag >= threshold_num) and (r.mean_flag >= threshold_pct),
             axis=1,
         )
+
+        # drop useless columns and rejoin
+        joined = joined.drop(columns=["mean_flag", "sum_flag"])
 
         segments = segments.merge(joined, on="id", how="left")
 
@@ -353,6 +359,57 @@ class Region:
             proj_crs=self.proj_crs,
             road_network=self.road_network,
             buildings=self._buildings,
+        )
+
+    def add_pseudo_plots(
+        self,
+        segment_flag: str = "",
+        **kwargs,
+    ) -> Self:
+        """
+
+        Args:
+            segment_flag (str, optional): _Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
+            minimum_building_area (float, optional): Removes buildings below a certain area from a segment. This is a good way to remove (e.g.) sheds when making the pseudo_plots
+            shrink (bool, optional): Shrink segment boundaries to building fronts (i.e. only consider backyards). Defaults to False.
+            building_mode (str, optional): _description_. Defaults to "mbr".
+            **kwargs: Other arguments that will be passed to Buildings.create_voronoi_plots
+
+        Returns:
+            Region: a new Region object
+        """
+        buildings = self.buildings
+
+        # Filter segments
+        segments = (
+            self.segments[self.segments[segment_flag]]
+            if segment_flag
+            else self.segments
+        )
+        segments = segments.copy()
+
+        # Generate list of voronoi polygons for each segment
+        def vpoly_apply(boundary: shapely.Polygon) -> list[tuple]:
+            polys = buildings.create_voronoi_plots(boundary=boundary, **kwargs)
+            return polys
+
+        segments["voronoi_polys"] = segments["geometry"].apply(vpoly_apply)
+
+        # Extract the voronoi polygons and associated building ids
+        # by exploding and converting tuples to new columns (in a new df)
+        exploded = segments.explode("voronoi_polys")
+
+        voronoi_df = pd.DataFrame(
+            exploded["voronoi_polys"].tolist(),
+            columns=["pseudo_plot", "id"],
+        )
+
+        buildings.data = pd.merge(buildings.data, voronoi_df, how="left", on="id")
+
+        return Region(
+            segments=self.segments,
+            proj_crs=self.proj_crs,
+            buildings=Buildings(buildings.data, self.proj_crs),
         )
 
     def tile_segments(self, size: float, margin: float) -> Self:

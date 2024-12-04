@@ -3,6 +3,8 @@ from typing import Self
 
 import geopandas as gpd
 import numpy as np
+import shapely
+from longsgis import voronoiDiagram4plg
 
 import utils
 
@@ -176,3 +178,68 @@ class Buildings:
         new_data.crs = original_geom.crs
 
         return Buildings(new_data, self.proj_crs)
+
+    def create_voronoi_plots(
+        self,
+        boundary: shapely.Polygon = None,
+        min_building_footprint: float = 0,
+        shrink: bool = True,
+        building_rep: str = "mrr",
+    ) -> list[tuple[2]]:
+        """Make sure the boundary and building crs are the same.
+
+        Args:
+            building_rep (str, optional): The representation to use for the buildings. Options are "mrr" (minimum rotated rectangle)
+                "geometry" (default geometry)
+
+        Returns:
+            A list of (geometry, building_id) tuples representing the voronoi polygons for each building.
+        """
+        buildings = self.data[["id", "geometry"]]
+
+        # If no boundary, just make the boundary the convex hull of all buildings
+        if boundary is None:
+            boundary = buildings["geometry"].unary_union.convex_hull
+
+        # Get all buildings within the boundary
+        buildings = buildings[buildings["geometry"].within(boundary)]
+
+        # Remove buildings smaller than the min_building_footprint
+        tb = buildings.to_crs(self.proj_crs)
+        tb = tb[tb["geometry"].area >= min_building_footprint][["id"]]
+        buildings = buildings.merge(tb, how="right", on="id")  # filtering join
+
+        # Simplify buildings
+        if building_rep == "mrr":
+            buildings["geometry"] = buildings["geometry"].minimum_rotated_rectangle()
+        elif building_rep == "geometry":
+            pass  # HACK
+        else:
+            msg = f"building_rep={building_rep} is not supported"
+            raise AttributeError(msg)
+
+        # Shrink boundary to the concave hull of the two most streetfacing (closest to the boundary)
+        # points of each building #TODO remove commented code
+        if shrink:
+            # if building_rep != "mrr":
+            #     warnings.warn(
+            #         "shrink=True and building type != MRR, this may mess up plot generation.",
+            #         stacklevel=2,
+            #     )
+            # boundary_points = []
+            # for _, r in buildings.iterrows():
+            #     boundary_points += utils.order_closest_vertices(
+            #         r[building_rep],
+            #         boundary,
+            #     )[:2]
+
+            # boundary = shapely.concave_hull(shapely.MultiPoint(boundary_points), 1)
+            boundary = shapely.concave_hull(
+                buildings["geometry"].unary_union,
+                ratio=0.8,
+            )
+
+        # Voronoi
+        vd = voronoiDiagram4plg(buildings, boundary)
+        vd = list(vd.itertuples(index=False, name=None))
+        return vd

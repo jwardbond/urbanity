@@ -1,17 +1,12 @@
-import copy
-import os
-import sys
 import unittest
 import warnings
-from pathlib import Path
 
-import numpy as np
 import geopandas as gpd
+import numpy as np
 import shapely
 from geopandas.testing import assert_geoseries_equal
 
 import utils
-from urbanity import Region
 
 
 class TestSjoinGreatestIntersection(unittest.TestCase):
@@ -111,3 +106,22 @@ class TestSjoinGreatestIntersection(unittest.TestCase):
 
         # New column should be added
         self.assertTrue("shape_name" in rslt.columns)
+
+
+class TestOrderClosestVertices(unittest.TestCase):
+    def test_order_closest_vertices(self) -> None:
+        p = shapely.Polygon([(0, 0), (1, 0), (2, 0.5), (0, 0.4)])  # Inside Polygon
+        target = shapely.Polygon(
+            [(-2, -2), (2, -2), (2, 2), (-2, 2)],
+        )  # Boundary Polygon
+
+        expected_order = [(2, 0.5), (1, 0), (0, 0.4), (0, 0)]
+
+        output = utils.order_closest_vertices(p, target)
+
+        # Output should have same length as p (minus one for closing the polygon)
+        self.assertEqual(len(output), len(p.exterior.coords) - 1)
+
+        # Test point order
+        for expected, point in zip(expected_order, output, strict=True):
+            self.assertEqual(expected, point.coords[0])

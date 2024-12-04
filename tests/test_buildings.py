@@ -28,13 +28,17 @@ class TestBuildings(unittest.TestCase):
         # Create a mock region
 
         building_data = {
-            "id": [0, 1, 2, 3],
+            "id": [0, 1, 22, 31],
             "height": [-1.0, 20.0, 12.0, 25.0],
             "geometry": [
                 shapely.Polygon([(0, 0), (5, 0), (5, 10), (0, 10)]),  # A=50, V=500
-                shapely.Polygon([(0, 0), (8, 0), (8, 10), (0, 10)]),  # A=80, V=1600
-                shapely.Polygon([(0, 0), (6, 0), (6, 10), (0, 10)]),  # A=60, V=720
-                shapely.Polygon([(0, 0), (9, 0), (9, 10), (0, 10)]),  # A=90, V=2250
+                shapely.Polygon(
+                    [(-5, -20), (-13, -20), (-13, -10), (-5, -10)]
+                ),  # A=80, V=1600
+                shapely.Polygon([(13, 0), (19, 0), (19, 10), (13, 10)]),  # A=60, V=720
+                shapely.Polygon(
+                    [(19, -30), (28, -30), (28, -20), (19, -20)]
+                ),  # A=90, V=2250
             ],
         }
 
@@ -49,7 +53,7 @@ class TestBuildings(unittest.TestCase):
         self.assertTrue("id" in buildings.data)
 
         # Area calcs should be correct
-        self.assertAlmostEqual(90, buildings.data.iloc[3]["area"])
+        self.assertAlmostEqual(90, buildings.data.iloc[3]["area"], places=5)
 
     def test_read_geojson(self) -> None:
         saved = Buildings.read_geojson(
@@ -123,3 +127,25 @@ class TestBuildings(unittest.TestCase):
         self.assertEqual(buildings.data.iloc[1]["floors"], 2)
         self.assertEqual(buildings.data.iloc[2]["floors"], 2)
         self.assertEqual(buildings.data.iloc[3]["floors"], 3)
+
+    def test_get_voronoi_plots(self) -> None:
+        buildings = self.buildings
+
+        voronoi_polys = buildings.create_voronoi_plots(
+            boundary=None,
+            min_building_footprint=0,
+            shrink=False,
+            building_rep="mrr",
+        )
+
+        # Return type should be list of tuples
+        self.assertIsInstance(voronoi_polys, list)
+        self.assertIsInstance(voronoi_polys[0], tuple)
+
+        # lengths should be the same
+        self.assertEqual(len(buildings.data), len(voronoi_polys))
+
+        # building ids should still be in the voronoi polygons data
+        self.assertTrue(
+            all(i[1] in buildings.data["id"].to_list() for i in voronoi_polys),
+        )

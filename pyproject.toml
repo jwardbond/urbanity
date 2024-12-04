@@ -1,11 +1,11 @@
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-select = [
+lint.select = [
     "ALL", # include all the rules, including new ones
 ]
 
-exclude = [
+lint.exclude = [
     ".bzr",
     ".direnv",
     ".eggs",
@@ -32,9 +32,10 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
+    "archive*"
 ]
 
-ignore = [ 
+lint.ignore = [ 
     "PT009",    # Assertion errors 
     "TD",       # Errors with todos
     "FIX001",   # Fixing HACKS
@@ -61,4 +62,3 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
