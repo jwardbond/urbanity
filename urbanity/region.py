@@ -77,6 +77,9 @@ class Region:
             self._buildings = obj
             self._buildings.proj_crs = self.proj_crs
 
+    #
+    # CONSTRUCTORS
+    #
     @classmethod
     def build_from_network(
         cls,
@@ -143,30 +146,33 @@ class Region:
     @classmethod
     def load_from_files(
         cls,
-        segments_path: PurePath,
+        segments: PurePath,
         proj_crs: str,
-        road_network_path: PurePath | None = None,
-        buildings_path: PurePath | None = None,
+        road_network: PurePath | None = None,
+        buildings: PurePath | None = None,
     ) -> Self:
         """Creates a Region object using saved .geojson files for the relevant attributes.
 
         Args:
-            segments_path (PurePath): The path to the .geojson containing pre-made segments
+            segments (PurePath): The path to the .geojson containing pre-made segments
             proj_crs (str): The crs used for anything that requires projection, the value can be anything accepted by
                 `pyroj <https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input>`
                 such as an authority string (eg "EPSG:4326") or a WKT string.
-            road_network_path (PurePath | None, optional): Path to the `.geojson` file for the road network.
+            road_network(PurePath | None, optional): Path to the `.geojson` file for the road network.
                 Defaults to None.
-            buildings_path (PurePath | None, optional): Path to the `.geojson` file for buildings.
+            buildings (PurePath | None, optional): Path to the `.geojson` file for buildings.
                 Defaults to None.
 
         Returns:
             Region: An instance of `Region` with the segments in WGS84/EPSG:4326
         """
-        segments = utils.load_geojson(segments_path)
-        road_network = utils.load_geojson(road_network_path)
+        segments = utils.load_geojson(segments)
 
-        buildings = Buildings.read_geojson(buildings_path, proj_crs)
+        if road_network:
+            road_network = utils.load_geojson(road_network)
+
+        if buildings:
+            buildings = Buildings.load_from_geojson(buildings, proj_crs)
 
         return cls(segments, proj_crs, road_network, buildings)
 

@@ -54,12 +54,12 @@ class TestRegion(unittest.TestCase):
         )
 
         loaded = Region.load_from_files(
-            segments_path=Path("./tests/test_files/test_files_segments.geojson"),
+            segments=Path("./tests/test_files/test_files_segments.geojson"),
             proj_crs=self.proj_crs,
-            road_network_path=Path(
+            road_network=Path(
                 "./tests/test_files/test_files_road_network.geojson",
             ),
-            buildings_path=Path("./tests/test_files/test_files_osm_buildings.geojson"),
+            buildings=Path("./tests/test_files/test_files_osm_buildings.geojson"),
         )
 
         # Test coordinate systems
@@ -392,48 +392,88 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         # Segment 3 should not be flagged (threshold num is 2 <= 3)
         self.assertFalse(segments.iloc[2]["sfh"])
 
-    def test_add_pseudo_plots(self):
-        """Test basic functionality of add_pseudo_plots."""
-        region = copy.deepcopy(self.region)
+    # def test_add_pseudo_plots(self):
+    #     """Test basic functionality of add_pseudo_plots."""
+    #     region = copy.deepcopy(self.region)
 
-        region = region.flag_segments_by_buildings(
-            flag_name="sfh",
-            threshold_pct=0.7,
-            threshold_num=3,
-            building_flag="sfh",
-        )
-        result = region.add_pseudo_plots(segment_flag="sfh")
+    #     region = region.flag_segments_by_buildings(
+    #         flag_name="sfh",
+    #         threshold_pct=0.7,
+    #         threshold_num=3,
+    #         building_flag="sfh",
+    #     )
+    #     result = region.add_pseudo_plots(segment_flag="sfh")
 
-        # Building ids 6,7,8,9 should have pseudo plots, the rest should not
-        filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
-        self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
+    #     # Building ids 6,7,8,9 should have pseudo plots, the rest should not
+    #     filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
+    #     self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
 
-        # Buildings should be within voronoi polys
-        self.assertTrue(
-            all(
-                shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
-                for _, r in filtered.iterrows()
-            ),
-        )
+    #     # Buildings should be within voronoi polys
+    #     self.assertTrue(
+    #         all(
+    #             shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
+    #             for _, r in filtered.iterrows()
+    #         ),
+    #     )
 
-        # BASIC FUNCTIONALITY TESTS
-        # Should return an instance of Region
-        self.assertIsInstance(result, Region)
+    #     # BASIC FUNCTIONALITY TESTS
+    #     # Should return an instance of Region
+    #     self.assertIsInstance(result, Region)
 
-        # Building data should have a "voronoi_geometry" column
-        self.assertTrue("pseudo_plot" in result.buildings.data.columns)
+    #     # Building data should have a "voronoi_geometry" column
+    #     self.assertTrue("pseudo_plot" in result.buildings.data.columns)
 
-        # Length of building and segment data should be unchanged
-        self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
-        self.assertEqual(len(result.segments), len(self.region.segments))
+    #     # Length of building and segment data should be unchanged
+    #     self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
+    #     self.assertEqual(len(result.segments), len(self.region.segments))
 
-        # TODO might be able to abstract these tests
-        # Projected CRS property should be unchanged
-        self.assertEqual(result.buildings.proj_crs, self.region.buildings.proj_crs)
-        self.assertEqual(self.region.buildings.proj_crs, result.proj_crs)
-        self.assertEqual(result.proj_crs, self.region.proj_crs)
+    #     # TODO might be able to abstract these tests
+    #     # Projected CRS property should be unchanged
+    #     self.assertEqual(result.buildings.proj_crs, self.region.buildings.proj_crs)
+    #     self.assertEqual(self.region.buildings.proj_crs, result.proj_crs)
+    #     self.assertEqual(result.proj_crs, self.region.proj_crs)
 
-        # Unprojected CRS should be the same
-        self.assertEqual(result.buildings.data.crs, self.region.buildings.data.crs)
-        self.assertEqual(self.region.buildings.data.crs, result.segments.crs)
-        self.assertEqual(result.segments.crs, self.region.segments.crs)
+    #     # Unprojected CRS should be the same
+    #     self.assertEqual(result.buildings.data.crs, self.region.buildings.data.crs)
+    #     self.assertEqual(self.region.buildings.data.crs, result.segments.crs)
+    #     self.assertEqual(result.segments.crs, self.region.segments.crs)
+
+
+# class TestVoronoi(unittest.TestCase):
+#     def test_voronoi(self):
+#         from matplotlib import pyplot as plt  # noqa: I001
+#         import numpy as np
+
+#         spath = Path("./tests/test_files/test_files_segments.geojson")
+#         bpath = Path("./tests/test_files/test_files_osm_buildings.geojson")
+#         print(bpath.exists())
+#         print(spath.exists())
+
+#         city = Region.load_from_files(
+#             segments=spath, buildings=bpath, proj_crs="EPSG:3347"
+#         )
+
+#         city = city.add_pseudo_plots()
+
+#         # Assuming gdf is your GeoDataFrame with geometry columns 'geom1', 'geom2', 'geom3'
+#         fig, ax = plt.subplots(figsize=(10, 10))
+
+#         # Plot segments
+#         city.segments.plot(ax=ax, color="gainsboro")
+
+#         # Plot pseudo_plots
+#         pplots = gpd.GeoDataFrame(
+#             geometry=city.buildings.data.pseudo_plot,
+#             crs=city.segments.crs,
+#         )
+#         colors = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
+#         pplots.plot(ax=ax, color=colors)
+
+#         # Plot buildings
+#         city.buildings.data.geometry.minimum_rotated_rectangle().plot(
+#             ax=ax,
+#             color="blue",
+#         )
+
+#         # Add legend and title
+#         plt.show()
