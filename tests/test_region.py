@@ -392,87 +392,116 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         # Segment 3 should not be flagged (threshold num is 2 <= 3)
         self.assertFalse(segments.iloc[2]["sfh"])
 
-    # def test_add_pseudo_plots(self):
-    #     """Test basic functionality of add_pseudo_plots."""
-    #     region = copy.deepcopy(self.region)
+    def test_add_pseudo_plots(self):
+        """Test basic functionality of add_pseudo_plots."""
+        region = copy.deepcopy(self.region)
 
-    #     region = region.flag_segments_by_buildings(
-    #         flag_name="sfh",
-    #         threshold_pct=0.7,
-    #         threshold_num=3,
-    #         building_flag="sfh",
-    #     )
-    #     result = region.add_pseudo_plots(segment_flag="sfh")
+        region = region.flag_segments_by_buildings(
+            flag_name="sfh",
+            threshold_pct=0.7,
+            threshold_num=3,
+            building_flag="sfh",
+        )
+        result = region.add_pseudo_plots(segment_flag="sfh")
 
-    #     # Building ids 6,7,8,9 should have pseudo plots, the rest should not
-    #     filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
-    #     self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
+        # Building ids 6,7,8,9 should have pseudo plots, the rest should not
+        filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
+        self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
 
-    #     # Buildings should be within voronoi polys
-    #     self.assertTrue(
-    #         all(
-    #             shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
-    #             for _, r in filtered.iterrows()
-    #         ),
-    #     )
+        # ###
+        # from matplotlib import pyplot as plt
+        # import numpy as np
 
-    #     # BASIC FUNCTIONALITY TESTS
-    #     # Should return an instance of Region
-    #     self.assertIsInstance(result, Region)
+        # fig, ax = plt.subplots(figsize=(10, 10))
 
-    #     # Building data should have a "voronoi_geometry" column
-    #     self.assertTrue("pseudo_plot" in result.buildings.data.columns)
+        # # Pseudo plots
+        # pplots = gpd.GeoDataFrame(
+        #     geometry=result.buildings.data["pseudo_plot"],
+        #     crs=result.buildings.data.crs,
+        # )
+        # colors2 = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
+        # pplots.plot(ax=ax, color=colors2)
 
-    #     # Length of building and segment data should be unchanged
-    #     self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
-    #     self.assertEqual(len(result.segments), len(self.region.segments))
+        # # Buildings
+        # result.buildings.data.plot(ax=ax, color="grey")
 
-    #     # TODO might be able to abstract these tests
-    #     # Projected CRS property should be unchanged
-    #     self.assertEqual(result.buildings.proj_crs, self.region.buildings.proj_crs)
-    #     self.assertEqual(self.region.buildings.proj_crs, result.proj_crs)
-    #     self.assertEqual(result.proj_crs, self.region.proj_crs)
+        # plt.show()
+        # ###
 
-    #     # Unprojected CRS should be the same
-    #     self.assertEqual(result.buildings.data.crs, self.region.buildings.data.crs)
-    #     self.assertEqual(self.region.buildings.data.crs, result.segments.crs)
-    #     self.assertEqual(result.segments.crs, self.region.segments.crs)
+        # Buildings should be within voronoi polys
+        self.assertTrue(
+            all(
+                shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
+                for _, r in filtered.iterrows()
+            ),
+        )
+
+        # BASIC FUNCTIONALITY TESTS
+        # Should return an instance of Region
+        self.assertIsInstance(result, Region)
+
+        # Building data should have a "voronoi_geometry" column
+        self.assertTrue("pseudo_plot" in result.buildings.data.columns)
+
+        # Length of building and segment data should be unchanged
+        self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
+        self.assertEqual(len(result.segments), len(self.region.segments))
+
+        # TODO might be able to abstract these tests
+        # Projected CRS property should be unchanged
+        self.assertEqual(result.buildings.proj_crs, self.region.buildings.proj_crs)
+        self.assertEqual(self.region.buildings.proj_crs, result.proj_crs)
+        self.assertEqual(result.proj_crs, self.region.proj_crs)
+
+        # Unprojected CRS should be the same
+        self.assertEqual(result.buildings.data.crs, self.region.buildings.data.crs)
+        self.assertEqual(self.region.buildings.data.crs, result.segments.crs)
+        self.assertEqual(result.segments.crs, self.region.segments.crs)
 
 
 # class TestVoronoi(unittest.TestCase):
+#     def setUp(self) -> None:
+#         warnings.simplefilter(
+#             "ignore",
+#             category=DeprecationWarning,
+#         )  # HACK geopandas warning suppression
+
 #     def test_voronoi(self):
 #         from matplotlib import pyplot as plt  # noqa: I001
 #         import numpy as np
 
 #         spath = Path("./tests/test_files/test_files_segments.geojson")
 #         bpath = Path("./tests/test_files/test_files_osm_buildings.geojson")
-#         print(bpath.exists())
-#         print(spath.exists())
 
 #         city = Region.load_from_files(
-#             segments=spath, buildings=bpath, proj_crs="EPSG:3347"
+#             segments=spath,
+#             buildings=bpath,
+#             proj_crs="EPSG:3347",
 #         )
+#         # city.buildings.data = city.buildings.data.sample(frac=0.4, random_state=42)
 
-#         city = city.add_pseudo_plots()
+#         city = city.add_pseudo_plots(building_rep="geometry", shrink=False)
 
 #         # Assuming gdf is your GeoDataFrame with geometry columns 'geom1', 'geom2', 'geom3'
 #         fig, ax = plt.subplots(figsize=(10, 10))
 
 #         # Plot segments
-#         city.segments.plot(ax=ax, color="gainsboro")
+#         colors1 = [tuple(np.random.rand(3)) for _ in range(len(city.segments))]
+#         city.segments.plot(ax=ax, color=colors1, alpha=0.2)
 
 #         # Plot pseudo_plots
 #         pplots = gpd.GeoDataFrame(
 #             geometry=city.buildings.data.pseudo_plot,
-#             crs=city.segments.crs,
+#             crs=city.proj_crs,
 #         )
-#         colors = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
-#         pplots.plot(ax=ax, color=colors)
+#         pplots = pplots.to_crs(city.segments.crs)
+#         colors2 = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
+#         pplots.plot(ax=ax, color=colors2)
 
 #         # Plot buildings
-#         city.buildings.data.geometry.minimum_rotated_rectangle().plot(
+#         city.buildings.data.geometry.plot(
 #             ax=ax,
-#             color="blue",
+#             color="grey",
 #         )
 
 #         # Add legend and title

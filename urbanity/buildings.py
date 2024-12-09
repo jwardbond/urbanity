@@ -4,9 +4,10 @@ from typing import Self
 import geopandas as gpd
 import numpy as np
 import shapely
-from longsgis import voronoiDiagram4plg
 
 import utils
+
+from .polyronoi import voronoiDiagram4plg
 
 
 class Buildings:
@@ -21,8 +22,11 @@ class Buildings:
         self.data = data
         self.proj_crs = proj_crs
 
+    #
+    # CONSTRUCTORS
+    #
     @classmethod
-    def read_geojson(cls, data: pathlib.PurePath, proj_crs: str) -> Self:
+    def load_from_geojson(cls, data: pathlib.PurePath, proj_crs: str) -> Self:
         """Load .geojson file containing building footprints.
 
         Args:
@@ -37,6 +41,9 @@ class Buildings:
         )  # FIXME ultimate goal to maybe not rely on utils
         return cls(data, proj_crs)
 
+    #
+    # CLASS METHODS
+    #
     def create_size_flag(
         self,
         min_vol: float,
@@ -186,7 +193,7 @@ class Buildings:
         shrink: bool = True,
         building_rep: str = "mrr",
     ) -> list[tuple[2]]:
-        """Make sure the boundary and building crs are the same.
+        """Make sure the boundary is the same crs as buildings.proj_crs!.
 
         Args:
             building_rep (str, optional): The representation to use for the buildings. Options are "mrr" (minimum rotated rectangle)
@@ -196,6 +203,8 @@ class Buildings:
             A list of (geometry, building_id) tuples representing the voronoi polygons for each building.
         """
         buildings = self.data[["id", "geometry"]]
+        original_crs = buildings.crs
+        buildings = buildings.to_crs(self.proj_crs)
 
         # If no boundary, just make the boundary the convex hull of all buildings
         if boundary is None:
@@ -213,7 +222,7 @@ class Buildings:
         if building_rep == "mrr":
             buildings["geometry"] = buildings["geometry"].minimum_rotated_rectangle()
         elif building_rep == "geometry":
-            pass  # HACK
+            pass  # TODO
         else:
             msg = f"building_rep={building_rep} is not supported"
             raise AttributeError(msg)
@@ -240,6 +249,8 @@ class Buildings:
             )
 
         # Voronoi
-        vd = voronoiDiagram4plg(buildings, boundary)
+        vd = voronoiDiagram4plg(buildings, boundary, densify=True)
+        vd = vd.to_crs(original_crs)
         vd = list(vd.itertuples(index=False, name=None))
+
         return vd

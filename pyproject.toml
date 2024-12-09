@@ -49,10 +49,13 @@ lint.ignore = [
     "RET504",   # Unecessary assignment before return
     "ANN202",   # Return type for private function
     "ANN204",   # Return type for magic function
+    "ANN003",   # Return types for kwargs
     "PTH110",   # Should use Path rathen than OS
     "PTH118",   # Should use Path rather than OS
     "PTH206",   # Should use Path rather than OS
     "PD901",    # df for dataframes
+    "FBT001",   # Boolean defaults
+    "FBT002",   # Boolean deafaults again
     ]
 
 

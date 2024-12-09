@@ -372,14 +372,14 @@ class Region:
         segment_flag: str = "",
         **kwargs,
     ) -> Self:
-        """
+        """TODO.
 
         Args:
             segment_flag (str, optional): _Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
             minimum_building_area (float, optional): Removes buildings below a certain area from a segment. This is a good way to remove (e.g.) sheds when making the pseudo_plots
             shrink (bool, optional): Shrink segment boundaries to building fronts (i.e. only consider backyards). Defaults to False.
             building_mode (str, optional): _description_. Defaults to "mbr".
-            **kwargs: Other arguments that will be passed to Buildings.create_voronoi_plots
+            **kwargs: Other arguments that will be passed to Buildings.create_voronoi_plots.
 
         Returns:
             Region: a new Region object
@@ -395,11 +395,15 @@ class Region:
         segments = segments.copy()
 
         # Generate list of voronoi polygons for each segment
+        # note that this is done in the buildings' proj_crs
+        # (which should be the regions proj_crs as well)
         def vpoly_apply(boundary: shapely.Polygon) -> list[tuple]:
             polys = buildings.create_voronoi_plots(boundary=boundary, **kwargs)
             return polys
 
-        segments["voronoi_polys"] = segments["geometry"].apply(vpoly_apply)
+        segments["voronoi_polys"] = (
+            segments["geometry"].to_crs(buildings.proj_crs).apply(vpoly_apply)
+        )
 
         # Extract the voronoi polygons and associated building ids
         # by exploding and converting tuples to new columns (in a new df)
@@ -410,7 +414,7 @@ class Region:
             columns=["pseudo_plot", "id"],
         )
 
-        buildings.data = pd.merge(buildings.data, voronoi_df, how="left", on="id")
+        buildings.data = buildings.data.merge(voronoi_df, how="left", on="id")
 
         return Region(
             segments=self.segments,

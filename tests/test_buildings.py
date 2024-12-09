@@ -5,10 +5,13 @@ import warnings
 from pathlib import Path
 
 import geopandas as gpd
+import matplotlib.pyplot as plt
+import numpy as np
 import shapely
 from geopandas.testing import assert_geodataframe_equal
 
-from urbanity import Buildings
+from urbanity import Buildings, Region
+import utils
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -55,8 +58,8 @@ class TestBuildings(unittest.TestCase):
         # Area calcs should be correct
         self.assertAlmostEqual(90, buildings.data.iloc[3]["area"], places=5)
 
-    def test_read_geojson(self) -> None:
-        saved = Buildings.read_geojson(
+    def test_load_from_geojson(self) -> None:
+        saved = Buildings.load_from_geojson(
             Path("./tests/test_files/test_files_mock_buildings.geojson"),
             proj_crs=self.proj_crs,
         )
