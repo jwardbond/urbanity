@@ -1,17 +1,16 @@
+import copy
 import os
 import sys
 import unittest
 import warnings
 from pathlib import Path
+from unittest.mock import patch
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
-import numpy as np
 import shapely
 from geopandas.testing import assert_geodataframe_equal
 
-from urbanity import Buildings, Region
-import utils
+from urbanity import Buildings
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -48,6 +47,7 @@ class TestBuildings(unittest.TestCase):
         self.proj_crs = "EPSG:3347"
         self.data = gpd.GeoDataFrame(building_data, crs=self.proj_crs)
         self.buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
+        self.save_folder = Path(__file__).parent / "test_files" / "test_buildings_save"
 
     def test_init(self) -> None:
         buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
@@ -57,20 +57,6 @@ class TestBuildings(unittest.TestCase):
 
         # Area calcs should be correct
         self.assertAlmostEqual(90, buildings.data.iloc[3]["area"], places=5)
-
-    def test_load_from_geojson(self) -> None:
-        saved = Buildings.load_from_geojson(
-            Path("./tests/test_files/test_files_mock_buildings.geojson"),
-            proj_crs=self.proj_crs,
-        )
-
-        new = Buildings(data=self.data, proj_crs=self.proj_crs)
-
-        # Saved and new dataframe should be the same (check to make sure you haven't changed the new dataframe)
-        assert_geodataframe_equal(saved.data, new.data)
-
-        # They should both have the same projected crs system
-        self.assertEqual(saved.proj_crs, new.proj_crs)
 
     def test_create_size_flag(self) -> None:
         b = self.buildings
@@ -152,3 +138,111 @@ class TestBuildings(unittest.TestCase):
         self.assertTrue(
             all(i[1] in buildings.data["id"].to_list() for i in voronoi_polys),
         )
+
+    @patch("pathlib.Path.mkdir")
+    @patch("utils.save_geodf")
+    def test_save_only_one_geom(self, mock_save, mock_mkdir) -> None:
+        buildings = copy.deepcopy(self.buildings)
+
+        buildings.save(self.save_folder)
+        args, _ = mock_save.call_args
+        gdf, path = args
+
+        # Utils save should only be called once
+        self.assertEqual(mock_save.call_count, 1)
+
+        # The dataframe should have the right name
+        self.assertEqual(path.name, "buildings.geojson")
+
+        # The dataframe should have only one geometry column
+        self.assertEqual(
+            sum(
+                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
+                for c in gdf.columns
+            ),
+            1,
+        )
+
+    @patch("pathlib.Path.mkdir")
+    @patch("utils.save_geodf")
+    def test_save_multiple_geom(self, mock_save, mock_mkdir) -> None:
+        buildings = copy.deepcopy(self.buildings)
+        buildings.data["extra_one"] = buildings.data["geometry"]
+        buildings.data["extra_two"] = buildings.data["extra_one"]
+
+        buildings.save(self.save_folder)
+
+        # Utils save should only be called once
+        self.assertEqual(mock_save.call_count, 3)
+
+        # FIRST CALL
+        args, _ = mock_save.call_args_list[0]
+        gdf, path = args
+        expected_path = self.save_folder / "extra_one.geojson"
+
+        # Path should be correct
+        self.assertEqual(path, expected_path)
+
+        # Dataframe should have only an id and geometry column
+        self.assertTrue("id" in gdf)
+        self.assertTrue("geometry" in gdf)
+        self.assertEqual(len(gdf.columns), 2)
+
+        # Dataframe should have only one column containing geometries
+        self.assertEqual(
+            sum(
+                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
+                for c in gdf.columns
+            ),
+            1,
+        )
+
+        # SECOND CALL
+        args, _ = mock_save.call_args_list[1]
+        gdf, path = args
+        expected_path = self.save_folder / "extra_two.geojson"
+
+        # Path should be correct
+        self.assertEqual(path, expected_path)
+
+        # Dataframe should have only an id and geometry column
+        self.assertTrue("id" in gdf)
+        self.assertTrue("geometry" in gdf)
+        self.assertEqual(len(gdf.columns), 2)
+
+        # Dataframe should have only one column containing geometries
+        self.assertEqual(
+            sum(
+                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
+                for c in gdf.columns
+            ),
+            1,
+        )
+
+        # THIRD CALL
+        args, _ = mock_save.call_args_list[2]
+        gdf, path = args
+        expected_path = self.save_folder / "buildings.geojson"
+
+        # Path should be correct
+        self.assertEqual(path, expected_path)
+
+        # Dataframe should have all the original columns except for extra_one and extra_two
+        self.assertTrue(all(c in gdf for c in self.data.columns))
+
+        # Dataframe should have only one column containing geometries
+        self.assertEqual(
+            sum(
+                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
+                for c in gdf.columns
+            ),
+            1,
+        )
+
+    def test_load(self):
+        loaded = Buildings.load(self.save_folder, proj_crs="EPSG:3347")
+        buildings = copy.deepcopy(self.buildings)
+        buildings.data["extra_one"] = buildings.data["geometry"]
+        buildings.data["extra_two"] = buildings.data["extra_one"]
+
+        assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)

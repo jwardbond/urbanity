@@ -1,8 +1,10 @@
 import pathlib
+from functools import reduce
 from typing import Self
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import shapely
 
 import utils
@@ -22,28 +24,6 @@ class Buildings:
         self.data = data
         self.proj_crs = proj_crs
 
-    #
-    # CONSTRUCTORS
-    #
-    @classmethod
-    def load_from_geojson(cls, data: pathlib.PurePath, proj_crs: str) -> Self:
-        """Load .geojson file containing building footprints.
-
-        Args:
-            data (pathlib.PurePath): path to file
-            proj_crs (str): crs to use for projections
-
-        Returns:
-            Self: an instance of Buildings
-        """
-        data = utils.load_geojson(
-            data,
-        )  # FIXME ultimate goal to maybe not rely on utils
-        return cls(data, proj_crs)
-
-    #
-    # CLASS METHODS
-    #
     def create_size_flag(
         self,
         min_vol: float,
@@ -213,6 +193,9 @@ class Buildings:
         # Get all buildings within the boundary
         buildings = buildings[buildings["geometry"].within(boundary)]
 
+        if len(buildings) == 0:
+            return (np.nan, np.nan)
+
         # Remove buildings smaller than the min_building_footprint
         tb = buildings.to_crs(self.proj_crs)
         tb = tb[tb["geometry"].area >= min_building_footprint][["id"]]
@@ -254,3 +237,63 @@ class Buildings:
         vd = list(vd.itertuples(index=False, name=None))
 
         return vd
+
+    #
+    # UTILTIY METHODS
+    #
+    def save(self, save_folder: pathlib.PurePath) -> None:
+        """Saves building data.
+
+        The saves created with this method can be loaded using Buildings.load_from_save.
+        Each column that contains shapely data is saved as a separate file.
+
+        Args:
+            save_folder (pathlib.PurePath): Save folder location
+        """
+        save_folder.mkdir(parents=True)
+        data = self.data
+
+        # Save any column with shapely data that isn't the "geometry" column
+        geometry_columns = []
+        for c in data.columns:
+            if (
+                isinstance(data[c].iloc[0], shapely.geometry.base.BaseGeometry)
+                and c != "geometry"
+            ):
+                gdf = gpd.GeoDataFrame(
+                    {"id": data["id"], "geometry": data[c]},
+                    crs=data.crs,
+                )
+                utils.save_geodf(gdf, save_folder / f"{c}.geojson")
+                geometry_columns.append(c)
+
+        # Save all other data
+        utils.save_geodf(
+            data.drop(columns=geometry_columns),
+            save_folder / "buildings.geojson",
+        )
+
+    @classmethod
+    def load(cls, load_folder: pathlib.PurePath, proj_crs: str) -> Self:
+        """Constructs a Buildings object from a previous save.
+
+        Calls utils.load_gdf so save file type can be abstracted. Returned object will have EPSG:4326 crs by default.
+
+        Args:
+            load_folder (pathlib.PurePath): Path to the building save folder
+            proj_crs (str, optional): Main crs to use
+        """
+        # Load files
+        gdfs = []
+        for f in list(load_folder.iterdir()):
+            gdf = utils.load_geodf(f)
+            if f.stem != "buildings":
+                gdf = gdf.rename(columns={"geometry": f.stem})
+            gdfs.append(gdf)
+
+        # Merge dataframes
+        data = reduce(lambda l, r: pd.merge(l, r, on="id", how="inner"), gdfs)
+
+        data = gpd.GeoDataFrame(data, geometry="geometry", crs=gdfs[0].crs)
+
+        return Buildings(data=data, proj_crs=proj_crs)

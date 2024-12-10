@@ -21,7 +21,7 @@ class PrintColors:
     UNDERLINE = "\033[4m"
 
 
-def load_geojson(
+def load_geodf(
     x: str | pathlib.PurePath,
 ) -> gpd.GeoDataFrame:
     """Util function used to parse function inputs."""
@@ -34,6 +34,19 @@ def load_geojson(
     x = x.fillna(value=np.nan)
 
     return x
+
+
+def save_geodf(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> None:
+    """Util function for saving geopandas files without prompts."""
+    i = 0
+    while savepath.exists():  # then prompt for overwrite
+        i += 1
+        savepath = savepath.parent / f"{savepath.stem}_{i}.{savepath.suffix}"
+
+    savepath.parent.mkdir(parents=True, exist_ok=True)  # make parent folder
+    savepath.write_text(
+        x.to_json(to_wgs84=True),
+    )  # save new file with standard coords
 
 
 def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> None:
