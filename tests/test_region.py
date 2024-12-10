@@ -20,6 +20,27 @@ os.environ["GDAL_DATA"] = os.path.join(
 )  # HACK GDAL warning suppression
 
 
+class TestMixins:
+    def assertCrsUnchanged(self, x: Region, y: Region):
+        """Asserts that crs are unchanged between two region objects"""
+        self.assertEqual(x.buildings.proj_crs, y.buildings.proj_crs)
+        self.assertEqual(y.buildings.proj_crs, x.proj_crs)
+        self.assertEqual(x.proj_crs, y.proj_crs)
+
+        # Unprojected CRS should be the same
+        self.assertEqual(x.buildings.data.crs, y.buildings.data.crs)
+        self.assertEqual(y.buildings.data.crs, x.segments.crs)
+        self.assertEqual(x.segments.crs, y.segments.crs)
+
+    def assertGeometryColumnsEqual(
+        self, gdf1: gpd.GeoDataFrame, gdf2: gpd.GeoDataFrame
+    ):
+        """Asserts that the geometry columns of two GeoDataFrames are the same for rows with the same value in an 'id' column"""
+        merged = gdf1.merge(gdf2, on="id", suffixes=("_1", "_2"))
+        for _, row in merged.iterrows():
+            self.assertTrue(shapely.equals(row["geometry_1"], row["geometry_2"]))
+
+
 class TestRegion(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -142,7 +163,7 @@ class TestRegion(unittest.TestCase):
             ),
         )
 
-        segments = gpd.GeoDataFrame(geometry=[poly, poly], crs=self.proj_crs)
+        (segments,) = gpd.GeoDataFrame(geometry=[poly, poly], crs=self.proj_crs)
         segments = Region._subdivide_segments(segments, max_area=max_area)
 
         # There should be 32 segments
@@ -226,8 +247,11 @@ class TestRegionFeatureMethods(unittest.TestCase):
             fillnan=0,
         )
 
-        # region should be unchanged
+        # Region should be unchanged
         self.assertTrue(region == self.region)
+
+        # segments should be identical
+        self.assertGeometryColumnsEqual(region.segments, self.region.segments)
 
         # output should be different
         self.assertFalse(output == region)
@@ -259,8 +283,11 @@ class TestRegionFeatureMethods(unittest.TestCase):
         # run disaggregator <-sounds made-up
         output = region.disagg_features(polygons, "pop", how="area")
 
-        # region should be unchanged
+        # Region should be a new object
         self.assertTrue(region == self.region)
+
+        # Segments should be the same
+        self.assertGeometryColumnsEqual(region.segments, self.region.segments)
 
         # output should be different
         self.assertFalse(output == region)
@@ -297,7 +324,7 @@ class TestRegionFeatureMethods(unittest.TestCase):
         pass
 
 
-class TestRegionMethodsWithBuildings(unittest.TestCase):
+class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
     def setUp(self) -> None:
         warnings.simplefilter(
             "ignore",
@@ -310,10 +337,16 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         seg1 = shapely.Polygon([(0, 0), (0, 10), (10, 10), (10, 0), (0, 0)])
         seg2 = shapely.Polygon([(20, 0), (20, 10), (30, 10), (30, 0), (20, 0)])
         seg3 = shapely.Polygon([(40, 0), (40, 10), (50, 10), (50, 0), (40, 0)])
+        seg4 = shapely.MultiPolygon(
+            [
+                shapely.Polygon([(70, 0), (70, 10), (60, 10), (60, 0), (70, 0)]),
+                shapely.Polygon([(80, 0), (80, 10), (70, 10), (70, 0), (80, 0)]),
+            ]
+        )
 
         segments = gpd.GeoDataFrame(
-            {"id": [0, 1, 2]},
-            geometry=[seg1, seg2, seg3],
+            {"id": [0, 1, 2, 3]},
+            geometry=[seg1, seg2, seg3, seg4],
             crs=self.proj_crs,
         )
 
@@ -339,7 +372,10 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         building10 = shapely.Polygon([(41, 1), (41, 3), (43, 3), (43, 1), (41, 1)])
         building11 = shapely.Polygon([(46, 1), (46, 3), (48, 3), (48, 1), (46, 1)])
 
-        # 6 sfh in first segment, 4 in second, 2 in third
+        # in segment 4
+        # nothing
+
+        # 6 sfh in first segment, 4 in second, 2 in third, # 0 in fourth
         buildings = gpd.GeoDataFrame(
             {"id": list(range(12)), "sfh": [1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1]},
             geometry=[
@@ -396,6 +432,38 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         """Test basic functionality of add_pseudo_plots."""
         region = copy.deepcopy(self.region)
 
+        result = region.add_pseudo_plots()
+
+        # Building ids 6,7,8,9 should have pseudo plots, the rest should not
+        filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
+        self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
+
+        # Buildings should be within voronoi polys
+        self.assertTrue(
+            all(
+                shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
+                for _, r in filtered.iterrows()
+            ),
+        )
+
+        # BASIC FUNCTIONALITY TESTS
+        # Should return an instance of Region
+        self.assertIsInstance(result, Region)
+
+        # Building data should have a "voronoi_geometry" column
+        self.assertTrue("pseudo_plot" in result.buildings.data.columns)
+
+        # Length of building and segment data should be unchanged
+        self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
+        self.assertEqual(len(result.segments), len(self.region.segments))
+
+        # Crs should not change
+        self.assertCrsUnchanged(result, self.region)
+
+    def test_add_pseudo_plots_with_flag(self):
+        """Test basic functionality of add_pseudo_plots."""
+        region = copy.deepcopy(self.region)
+
         region = region.flag_segments_by_buildings(
             flag_name="sfh",
             threshold_pct=0.7,
@@ -413,6 +481,8 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         # import numpy as np
 
         # fig, ax = plt.subplots(figsize=(10, 10))
+
+        # result.segments.plot(ax=ax, color="lightgrey")
 
         # # Pseudo plots
         # pplots = gpd.GeoDataFrame(
@@ -447,16 +517,8 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
         self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
         self.assertEqual(len(result.segments), len(self.region.segments))
 
-        # TODO might be able to abstract these tests
-        # Projected CRS property should be unchanged
-        self.assertEqual(result.buildings.proj_crs, self.region.buildings.proj_crs)
-        self.assertEqual(self.region.buildings.proj_crs, result.proj_crs)
-        self.assertEqual(result.proj_crs, self.region.proj_crs)
-
-        # Unprojected CRS should be the same
-        self.assertEqual(result.buildings.data.crs, self.region.buildings.data.crs)
-        self.assertEqual(self.region.buildings.data.crs, result.segments.crs)
-        self.assertEqual(result.segments.crs, self.region.segments.crs)
+        # Crs should not change
+        self.assertCrsUnchanged(result, self.region)
 
 
 # class TestVoronoi(unittest.TestCase):
@@ -504,5 +566,4 @@ class TestRegionMethodsWithBuildings(unittest.TestCase):
 #             color="grey",
 #         )
 
-#         # Add legend and title
 #         plt.show()
