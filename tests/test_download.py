@@ -23,7 +23,7 @@ class TestDownloadOSMBoundary(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.query = "Little Portugal, Toronto"
 
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
         cls.boundarypath.unlink(missing_ok=True)  # delete existing files
 
     def setUp(self) -> None:
@@ -55,9 +55,9 @@ class TestDownloadOSMBoundary(unittest.TestCase):
 class DownloadOSMNetwork(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
 
-        cls.networkpath = Path("./tests/test_files/test_files_road_network.geojson")
+        cls.networkpath = Path("./tests/test_files/test_files_road_network.gpkg")
         cls.networkpath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
@@ -85,7 +85,7 @@ class DownloadOSMNetwork(unittest.TestCase):
         self.assertEqual("EPSG:4326", network.crs)
 
         # test that ouputs match
-        network_from_file = utils.load_geojson(networkpath)
+        network_from_file = utils.load_geodf(networkpath)
         assert_geodataframe_equal(network, network_from_file)
 
     def test_download_error(self):
@@ -97,9 +97,9 @@ class DownloadOSMNetwork(unittest.TestCase):
 class TestDownloadOSMBuildings(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
 
-        cls.buildingspath = Path("./tests/test_files/test_files_osm_buildings.geojson")
+        cls.buildingspath = Path("./tests/test_files/test_files_osm_buildings.gpkg")
         cls.buildingspath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
@@ -125,7 +125,7 @@ class TestDownloadOSMBuildings(unittest.TestCase):
         self.assertEqual("EPSG:4326", buildings.crs)
 
         # test that ouputs match
-        buildings_from_file = utils.load_geojson(buildingspath)
+        buildings_from_file = utils.load_geodf(buildingspath)
         assert_geodataframe_equal(buildings, buildings_from_file)
 
     def test_download_error(self):
@@ -137,9 +137,9 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 class TestDownloadMSBuildings(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.geojson")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
 
-        cls.buildingspath = Path("./tests/test_files/test_files_ms_buildings.geojson")
+        cls.buildingspath = Path("./tests/test_files/test_files_ms_buildings.gpkg")
         cls.buildingspath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
@@ -165,7 +165,7 @@ class TestDownloadMSBuildings(unittest.TestCase):
         self.assertEqual("EPSG:4326", buildings.crs)
 
         # test that ouputs match
-        buildings_from_file = utils.load_geojson(buildingspath)
+        buildings_from_file = utils.load_geodf(buildingspath)
         assert_geodataframe_equal(buildings, buildings_from_file)
 
     def test_download_error(self):
@@ -175,6 +175,3 @@ class TestDownloadMSBuildings(unittest.TestCase):
 
 
 # TODO add test for ms buildings
-
-if __name__ == "__main__":
-    unittest.main(buffer=True)

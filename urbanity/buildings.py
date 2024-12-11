@@ -264,13 +264,13 @@ class Buildings:
                     {"id": data["id"], "geometry": data[c]},
                     crs=data.crs,
                 )
-                utils.save_geodf(gdf, save_folder / f"{c}.geojson")
+                utils.save_geodf(gdf, save_folder / c)
                 geometry_columns.append(c)
 
         # Save all other data
         utils.save_geodf(
             data.drop(columns=geometry_columns),
-            save_folder / "buildings.geojson",
+            save_folder / "buildings",
         )
 
     @classmethod
@@ -292,7 +292,10 @@ class Buildings:
             gdfs.append(gdf)
 
         # Merge dataframes
-        data = reduce(lambda l, r: pd.merge(l, r, on="id", how="inner"), gdfs)
+        data = reduce(
+            lambda left, right: pd.merge(left, right, on="id", how="inner"),  # noqa: PD015
+            gdfs,
+        )
 
         data = gpd.GeoDataFrame(data, geometry="geometry", crs=gdfs[0].crs)
 

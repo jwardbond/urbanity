@@ -4,6 +4,7 @@ import sys
 import unittest
 import warnings
 from pathlib import Path
+import shutil
 
 import geopandas as gpd
 import shapely
@@ -41,7 +42,7 @@ class TestMixins:
             self.assertTrue(shapely.equals(row["geometry_1"], row["geometry_2"]))
 
 
-class TestRegion(unittest.TestCase):
+class TestRegion(unittest.TestCase, TestMixins):
     @classmethod
     def setUpClass(cls) -> None:
         warnings.simplefilter(
@@ -50,8 +51,8 @@ class TestRegion(unittest.TestCase):
         )  # HACK geopandas warning suppression
 
         # Set output path and get rid of existing files
-        networkpath = Path("./tests/test_files/test_files_road_network.geojson")
-        cls.network = utils.load_geojson(networkpath)
+        networkpath = Path("./tests/test_files/test_files_road_network.gpkg")
+        cls.network = utils.load_geodf(networkpath)
 
         cls.proj_crs = "EPSG:3347"
 
@@ -75,12 +76,12 @@ class TestRegion(unittest.TestCase):
         )
 
         loaded = Region.load_from_files(
-            segments=Path("./tests/test_files/test_files_segments.geojson"),
+            segments=Path("./tests/test_files/test_files_segments.gpkg"),
             proj_crs=self.proj_crs,
             road_network=Path(
-                "./tests/test_files/test_files_road_network.geojson",
+                "./tests/test_files/test_files_road_network.gpkg",
             ),
-            buildings=Path("./tests/test_files/test_files_osm_buildings.geojson"),
+            buildings=Path("./tests/test_files/test_files_osm_buildings.gpkg"),
         )
 
         # Test coordinate systems
@@ -97,7 +98,39 @@ class TestRegion(unittest.TestCase):
         self.assertTrue("id" in generated.segments)
 
         # Test that the segmentation generation is (still) running correctly
-        assert_geodataframe_equal(generated.segments, loaded.segments)
+        assert_geodataframe_equal(generated.segments, loaded.segments, check_like=True)
+
+    def test_save_load(self):
+        region = Region.load_from_files(
+            segments=Path("./tests/test_files/test_files_segments.gpkg"),
+            proj_crs=self.proj_crs,
+            road_network=Path(
+                "./tests/test_files/test_files_road_network.gpkg",
+            ),
+            buildings=Path("./tests/test_files/test_files_osm_buildings.gpkg"),
+        )
+
+        save_folder = Path("./tests/test_files/test_region_save")
+        if save_folder.exists():
+            shutil.rmtree(save_folder)
+
+        region.save(save_folder)
+
+        loaded = Region.load(save_folder, proj_crs="EPSG:3347")
+
+        assert_geodataframe_equal(region.segments, loaded.segments, check_like=True)
+        print(type(region.road_network))
+        print(type(loaded.road_network))
+        assert_geodataframe_equal(
+            region.road_network,
+            loaded.road_network,
+            check_like=True,
+        )
+        assert_geodataframe_equal(
+            region.buildings.data,
+            loaded.buildings.data,
+            check_like=True,
+        )
 
     def test__split_polygon(self):
         side_length = 1000
@@ -163,7 +196,7 @@ class TestRegion(unittest.TestCase):
             ),
         )
 
-        (segments,) = gpd.GeoDataFrame(geometry=[poly, poly], crs=self.proj_crs)
+        segments = gpd.GeoDataFrame(geometry=[poly, poly], crs=self.proj_crs)
         segments = Region._subdivide_segments(segments, max_area=max_area)
 
         # There should be 32 segments
@@ -173,7 +206,7 @@ class TestRegion(unittest.TestCase):
         self.assertTrue((segments["geometry"].area <= max_area).all())
 
 
-class TestRegionFeatureMethods(unittest.TestCase):
+class TestRegionFeatureMethods(unittest.TestCase, TestMixins):
     @classmethod
     def setUpClass(cls) -> None:
         warnings.simplefilter(

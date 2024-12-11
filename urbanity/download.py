@@ -38,11 +38,15 @@ def download_osm_boundary(
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
     polygon = gdf_place["geometry"].unary_union
+    gdf = gpd.GeoDataFrame(
+        geometry=[polygon],
+        crs="EPSG:4326",
+    )
 
     if savefolder:
         savefolder.mkdir(exist_ok=True, parents=True)
-        savepath = savefolder / (savefolder.stem + "_boundary.geojson")
-        savepath.write_text(shapely.to_geojson(polygon))
+        savepath = savefolder / (savefolder.stem + "_boundary.gpkg")
+        utils.save_geodf_with_prompt(gdf, savepath)
 
     return polygon
 
@@ -78,12 +82,12 @@ def download_osm_network(
     network.index = network.index.astype(np.int64)
     network = network[["geometry"]]
 
+    network.insert(loc=0, column="id", value=network.index)
+
     # Save and return
     if savefolder:
-        savepath = savefolder / (savefolder.stem + "_road_network.geojson")
+        savepath = savefolder / (savefolder.stem + "_road_network.gpkg")
         utils.save_geodf_with_prompt(network, savepath)
-
-    network.insert(loc=0, column="id", value=network.index)
 
     return network
 
@@ -137,12 +141,12 @@ def download_osm_buildings(
         sorted(buildings.columns.intersection(filt), key=lambda x: filt.index(x))
     ]
 
+    buildings.insert(loc=0, column="id", value=buildings.index)
+
     # Save and return
     if savefolder:
-        savepath = savefolder / (savefolder.stem + "_osm_buildings.geojson")
+        savepath = savefolder / (savefolder.stem + "_osm_buildings.gpkg")
         utils.save_geodf_with_prompt(buildings, savepath)
-
-    buildings.insert(loc=0, column="id", value=buildings.index)
 
     return buildings
 
@@ -186,12 +190,13 @@ def download_osm_generic(
     gdf.index = gdf.index.astype(np.int64)
     # TODO prune columns
 
+    gdf.insert(loc=0, column="id", value=gdf.index)
+
     # Save and return
     if savefolder:
-        savepath = savefolder / (savefolder.stem + f"_osm_{savename}.geojson")
+        savepath = savefolder / (savefolder.stem + f"_osm_{savename}.gpkg")
         utils.save_geodf_with_prompt(gdf, savepath)
 
-    gdf.insert(loc=0, column="id", value=gdf.index)
     return gdf
 
 
@@ -270,11 +275,11 @@ def download_ms_buildings(
 
     buildings = buildings[["type", "height", "confidence", "geometry"]]
 
-    if savefolder:
-        savepath = savefolder / (savefolder.stem + "_ms_buildings.geojson")
-        utils.save_geodf_with_prompt(buildings, savepath)
-
     buildings.insert(loc=0, column="id", value=buildings.index)
+
+    if savefolder:
+        savepath = savefolder / (savefolder.stem + "_ms_buildings.gpkg")
+        utils.save_geodf_with_prompt(buildings, savepath)
 
     return buildings
 

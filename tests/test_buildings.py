@@ -1,5 +1,6 @@
 import copy
 import os
+import shutil
 import sys
 import unittest
 import warnings
@@ -35,11 +36,11 @@ class TestBuildings(unittest.TestCase):
             "geometry": [
                 shapely.Polygon([(0, 0), (5, 0), (5, 10), (0, 10)]),  # A=50, V=500
                 shapely.Polygon(
-                    [(-5, -20), (-13, -20), (-13, -10), (-5, -10)]
+                    [(-5, -20), (-13, -20), (-13, -10), (-5, -10)],
                 ),  # A=80, V=1600
                 shapely.Polygon([(13, 0), (19, 0), (19, 10), (13, 10)]),  # A=60, V=720
                 shapely.Polygon(
-                    [(19, -30), (28, -30), (28, -20), (19, -20)]
+                    [(19, -30), (28, -30), (28, -20), (19, -20)],
                 ),  # A=90, V=2250
             ],
         }
@@ -141,7 +142,7 @@ class TestBuildings(unittest.TestCase):
 
     @patch("pathlib.Path.mkdir")
     @patch("utils.save_geodf")
-    def test_save_only_one_geom(self, mock_save, mock_mkdir) -> None:
+    def test_save_only_one_geom(self, mock_save, mock_mkdir) -> None:  # noqa: ANN001, ARG002
         buildings = copy.deepcopy(self.buildings)
 
         buildings.save(self.save_folder)
@@ -152,7 +153,7 @@ class TestBuildings(unittest.TestCase):
         self.assertEqual(mock_save.call_count, 1)
 
         # The dataframe should have the right name
-        self.assertEqual(path.name, "buildings.geojson")
+        self.assertEqual(path.name, "buildings")
 
         # The dataframe should have only one geometry column
         self.assertEqual(
@@ -165,7 +166,7 @@ class TestBuildings(unittest.TestCase):
 
     @patch("pathlib.Path.mkdir")
     @patch("utils.save_geodf")
-    def test_save_multiple_geom(self, mock_save, mock_mkdir) -> None:
+    def test_save_multiple_geom(self, mock_save, mock_mkdir) -> None:  # noqa: ANN001, ARG002
         buildings = copy.deepcopy(self.buildings)
         buildings.data["extra_one"] = buildings.data["geometry"]
         buildings.data["extra_two"] = buildings.data["extra_one"]
@@ -178,7 +179,7 @@ class TestBuildings(unittest.TestCase):
         # FIRST CALL
         args, _ = mock_save.call_args_list[0]
         gdf, path = args
-        expected_path = self.save_folder / "extra_one.geojson"
+        expected_path = self.save_folder / "extra_one"
 
         # Path should be correct
         self.assertEqual(path, expected_path)
@@ -200,7 +201,7 @@ class TestBuildings(unittest.TestCase):
         # SECOND CALL
         args, _ = mock_save.call_args_list[1]
         gdf, path = args
-        expected_path = self.save_folder / "extra_two.geojson"
+        expected_path = self.save_folder / "extra_two"
 
         # Path should be correct
         self.assertEqual(path, expected_path)
@@ -222,7 +223,7 @@ class TestBuildings(unittest.TestCase):
         # THIRD CALL
         args, _ = mock_save.call_args_list[2]
         gdf, path = args
-        expected_path = self.save_folder / "buildings.geojson"
+        expected_path = self.save_folder / "buildings"
 
         # Path should be correct
         self.assertEqual(path, expected_path)
@@ -239,10 +240,21 @@ class TestBuildings(unittest.TestCase):
             1,
         )
 
-    def test_load(self):
-        loaded = Buildings.load(self.save_folder, proj_crs="EPSG:3347")
+    def test_save_and_load(self) -> None:
         buildings = copy.deepcopy(self.buildings)
         buildings.data["extra_one"] = buildings.data["geometry"]
         buildings.data["extra_two"] = buildings.data["extra_one"]
 
+        if self.save_folder.exists():
+            shutil.rmtree(self.save_folder)
+
+        buildings.save(self.save_folder)
+        loaded = Buildings.load(self.save_folder, proj_crs="EPSG:3347")
+
+        # Files should be created
+        self.assertTrue(Path(self.save_folder / "buildings.gpkg").exists())
+        self.assertTrue(Path(self.save_folder / "extra_one.gpkg").exists())
+        self.assertTrue(Path(self.save_folder / "extra_two.gpkg").exists())
+
+        # Data should be unchanged
         assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)

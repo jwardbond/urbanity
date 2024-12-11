@@ -30,23 +30,29 @@ def load_geodf(
 
     x = gpd.read_file(x, engine="pyogrio", use_arrow=True)
     x.set_crs("EPSG:4326", allow_override=False)
-    x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
+    if "id" in x:
+        x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
     x = x.fillna(value=np.nan)
 
     return x
 
 
 def save_geodf(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> None:
-    """Util function for saving geopandas files without prompts."""
+    """Util function for saving geopandas files without prompts.
+
+    Saves in EPSG:4326
+    """
+    savepath = savepath.with_suffix(".gpkg")
     i = 0
     while savepath.exists():  # then prompt for overwrite
         i += 1
         savepath = savepath.parent / f"{savepath.stem}_{i}.{savepath.suffix}"
 
     savepath.parent.mkdir(parents=True, exist_ok=True)  # make parent folder
-    savepath.write_text(
-        x.to_json(to_wgs84=True),
-    )  # save new file with standard coords
+
+    if x.crs != "EPSG:4326":
+        x = x.to_crs("EPSG:4326")
+    x.to_file(savepath, driver="GPKG")
 
 
 def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> None:
@@ -57,15 +63,13 @@ def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> N
             overwrite = str(input(f"Overwriting {savepath}. Proceed? (Y/N)"))
             if overwrite in ("Y", "y"):
                 prompt_success = True
-                savepath.write_text(x.to_json())
+                save_geodf(x, savepath)
             elif overwrite in ("N", "n"):
                 prompt_success = True
                 sys.exit("Exiting")
     else:
         savepath.parent.mkdir(parents=True, exist_ok=True)  # make parent folder
-        savepath.write_text(
-            x.to_json(to_wgs84=True),
-        )  # save new file with standard coords
+        save_geodf(x, savepath)  # save new file with standard coords
 
 
 def sjoin_greatest_intersection(

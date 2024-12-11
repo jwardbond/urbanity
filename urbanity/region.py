@@ -1,9 +1,8 @@
 import copy
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Self
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 import shapely
 import shapely.ops
@@ -166,16 +165,120 @@ class Region:
         Returns:
             Region: An instance of `Region` with the segments in WGS84/EPSG:4326
         """
-        segments = utils.load_geojson(segments)
+        segments = utils.load_geodf(segments)
 
         if road_network:
-            road_network = utils.load_geojson(road_network)
+            road_network = utils.load_geodf(road_network)
 
         if buildings:
-            buildings = Buildings.load_from_geojson(buildings, proj_crs)
+            buildings = utils.load_geodf(buildings)
+            buildings = Buildings(buildings, proj_crs)
 
-        return cls(segments, proj_crs, road_network, buildings)
+        return Region(segments, proj_crs, road_network, buildings)
 
+    @classmethod
+    def load(cls, load_folder: PurePath, proj_crs: str) -> Self:
+        # Load segments
+        try:
+            s = next(load_folder.glob("segments.*"))
+            segments = utils.load_geodf(s)
+        except StopIteration as e:
+            msg = f"Save not found at {load_folder!s}"
+            raise FileNotFoundError(msg) from e
+
+        # Load road networks
+        r = next(load_folder.glob("road_network.*"), None)
+        road_network = utils.load_geodf(r) if r else None
+
+        # Load buildings
+        if (load_folder / "buildings").exists():
+            buildings = Buildings.load(load_folder / "buildings", proj_crs)
+        else:
+            buildings = None
+
+        return Region(
+            segments=segments,
+            proj_crs=proj_crs,
+            road_network=road_network,
+            buildings=buildings,
+        )
+
+    @classmethod
+    def _subdivide_segments(
+        cls,
+        segments: gpd.GeoDataFrame,
+        max_area: int,
+    ) -> gpd.GeoDataFrame:
+        """Subdivides all segments greater than a minimum area.
+
+        Overly large segments are divided in half either vertically or horizontally until they are below the max_area.
+
+        Args:
+            segments (geopandas.Geodataframe): A geodataframe containing the segments
+            max_area (int): The maximum area of a segment. Units will depend on the value of `Region.proj_crs`
+
+        Returns:
+            segments (geopandas.Geodataframe): A geodataframe containing the subdivided segments.
+        """
+        # TODO Figure out how to handle buildings on edges.
+        segments = copy.deepcopy(segments)
+
+        larger = segments[segments.area > max_area].copy()
+        smaller = segments[segments.area <= max_area].copy()
+
+        while not larger.empty:
+            # Split large geometries
+            larger["geo_tmp"] = larger.apply(
+                lambda row: cls._split_polygon(row.geometry),
+                axis=1,
+            )
+            larger = larger.explode(column="geo_tmp", ignore_index=True)
+            larger["geometry"] = larger["geo_tmp"]
+
+            # Combine the split dataframe again
+            segments = gpd.GeoDataFrame(pd.concat([larger, smaller]))
+            segments["area"] = segments.geometry.area
+
+            # Generate new dataframe splits
+            larger = segments[segments.area > max_area].copy()
+            smaller = segments[segments.area <= max_area].copy()
+
+        # re-index
+        segments = segments.drop(labels=["geo_tmp"], axis=1)
+        segments = segments.reset_index(drop=True)
+
+        return segments
+
+    @classmethod
+    def _split_polygon(cls, geom: shapely.Polygon) -> list[shapely.Polygon]:
+        """Splits a polygon in half either vertically or horizontally.
+
+        Args:
+            geom (shapely.Polygon): A shapely polygon
+
+        Returns:
+            geoms (list): A list of shapely polygons
+        """
+        bounds = geom.bounds
+
+        # If geometry is longer than it is tall, split along a vertical line
+        if (bounds[2] - bounds[0]) > (bounds[3] - bounds[1]):
+            x_mid = (bounds[0] + bounds[2]) / 2
+            splitter = shapely.LineString([(x_mid, bounds[1]), (x_mid, bounds[3])])
+
+        # Else, split along a horizontal line
+        else:
+            y_mid = (bounds[1] + bounds[3]) / 2
+            splitter = shapely.LineString([(bounds[0], y_mid), (bounds[2], y_mid)])
+
+        # Convert from geometry collection to list
+        geoms = shapely.ops.split(geom, splitter)
+        geoms = list(geoms.geoms)
+        return geoms
+
+    #
+    # SEGMENTS
+    #
     def subtract_polygons(
         self,
         polygons: gpd.GeoDataFrame,
@@ -195,6 +298,7 @@ class Region:
 
         # Get set difference
         segments = segments.overlay(polygons, how="difference")
+        segments["area"] = segments.to_crs(self.proj_crs).area
 
         return Region(
             segments=segments,
@@ -206,9 +310,9 @@ class Region:
     def flag_segments_by_buildings(
         self,
         flag_name: str,
+        building_flag: str,
         threshold_pct: float,
         threshold_num: int,
-        building_flag: str,
     ) -> Self:
         if building_flag not in self.buildings.data:
             msg = f"No flag named {building_flag} found in building data"
@@ -216,7 +320,7 @@ class Region:
 
         # TODO keep in mind that the following is a common operation and might be good to abstract so
         # I am not running it all the time
-        segments = self.segments
+        segments = self.segments.copy()
         buildings = self.buildings.data[["geometry", building_flag]]
 
         joined = segments[["id", "geometry"]].sjoin(
@@ -422,277 +526,31 @@ class Region:
             buildings=Buildings(buildings.data, self.proj_crs),
         )
 
-    def tile_segments(self, size: float, margin: float) -> Self:
-        """Tiles all segments with squares `size` x `size`, with a gap of `margin` between them.
+    #
+    # UTILTIY METHODS
+    #
+    def save(self, save_folder: PurePath) -> None:
+        """Saves a Region object as a collection of geojson.
 
-        Every segment is tiled using a grid aligned with the major axis of that segment.
-
-        Args:
-            size (float): The side length of the square you want to tile with. Units will depend on `self.proj_crs`
-            margin (float): The margin around tiles. Units will depend on `self.proj_crs`
-
-        Returns:
-            obj: A copy of the `Region` object after tiling
+        If the folder already exists, then it appends a number. Use load_region constructor function to reverse.
         """
-        # Project
-        segments = self.segments.copy()
-        segments = segments.to_crs(self.proj_crs)
+        # Make save folder
+        i = 0
+        while save_folder.exists():
+            i += 1
+            save_folder = save_folder.parent / f"{save_folder.stem}_{i}"
+        save_folder.mkdir(parents=True)
 
-        # Get minimum rotated bounding rectangles
-        segments["mrr"] = segments.minimum_rotated_rectangle()
-        segments["mrr_angle"] = segments["mrr"].swifter.apply(
-            lambda mrr: self._mrr_azimuth(mrr),
-        )
+        # Save
+        utils.save_geodf(self.segments, save_folder / "segments")
 
-        # Get a coordinate to rotate about
-        bounds = segments["geometry"].bounds
-        segments["rotation_point"] = list(
-            zip(bounds["minx"], bounds["miny"], strict=True),
-        )
+        if self.road_network is not None:
+            utils.save_geodf(self.road_network, save_folder / "road_network")
+        if self.buildings is not None:
+            self.buildings.save(save_folder / "buildings")
 
-        # Rotate rectangles to be axis-aligned
-        segments["mrr"] = segments.swifter.apply(
-            lambda row: shapely.affinity.rotate(
-                row.mrr,
-                -1 * row.mrr_angle,
-                row.rotation_point,
-                use_radians=True,
-            ),
-            axis=1,
-        )
-
-        # Add tiles
-        segments[["p1", "p2", "p3", "p4"]] = segments.swifter.apply(
-            lambda row: self._tile_rect(row.mrr, size, margin),
-            axis=1,
-            result_type="expand",
-        )
-
-        # Clip tiles to segments and select best tiling
-        segments["tmp_geom"] = segments.swifter.apply(
-            lambda row: shapely.affinity.rotate(
-                row.geometry,
-                -1 * row.mrr_angle,
-                row.rotation_point,
-                use_radians=True,
-            ),
-            axis=1,
-        )
-
-        segments[["best_tiling", "n_tiles"]] = segments.swifter.apply(
-            lambda row: self._filter_multipolygon(
-                row.tmp_geom,
-                [
-                    row.p1,
-                    row.p2,
-                    row.p3,
-                    row.p4,
-                ],
-            ),
-            axis=1,
-            result_type="expand",
-        )
-        segments = segments.drop(labels=["p1", "p2", "p3", "p4"], axis=1)
-
-        # Rotate the best tiling to match the original geometry
-        segments["best_tiling"] = segments.swifter.apply(
-            lambda row: shapely.affinity.rotate(
-                row.best_tiling,
-                1 * row.mrr_angle,
-                row.rotation_point,
-                use_radians=True,
-            ),
-            axis=1,
-        )
-
-        return Region(
-            segments=segments,
-            proj_crs=self.proj_crs,
-            road_network=self.road_network,
-            buildings=self._buildings,
-        )
-
-    @classmethod
-    def _subdivide_segments(
-        cls,
-        segments: gpd.GeoDataFrame,
-        max_area: int,
-    ) -> gpd.GeoDataFrame:
-        """Subdivides all segments greater than a minimum area.
-
-        Overly large segments are divided in half either vertically or horizontally until they are below the max_area.
-
-        Args:
-            segments (geopandas.Geodataframe): A geodataframe containing the segments
-            max_area (int): The maximum area of a segment. Units will depend on the value of `Region.proj_crs`
-
-        Returns:
-            segments (geopandas.Geodataframe): A geodataframe containing the subdivided segments.
-        """
-        # TODO Figure out how to handle buildings on edges.
-        segments = copy.deepcopy(segments)
-
-        larger = segments[segments.area > max_area].copy()
-        smaller = segments[segments.area <= max_area].copy()
-
-        while not larger.empty:
-            # Split large geometries
-            larger["geo_tmp"] = larger.apply(
-                lambda row: cls._split_polygon(row.geometry),
-                axis=1,
-            )
-            larger = larger.explode(column="geo_tmp", ignore_index=True)
-            larger["geometry"] = larger["geo_tmp"]
-
-            # Combine the split dataframe again
-            segments = gpd.GeoDataFrame(pd.concat([larger, smaller]))
-            segments["area"] = segments.geometry.area
-
-            # Generate new dataframe splits
-            larger = segments[segments.area > max_area].copy()
-            smaller = segments[segments.area <= max_area].copy()
-
-        # re-index
-        segments = segments.drop(labels=["geo_tmp"], axis=1)
-        segments = segments.reset_index(drop=True)
-
-        return segments
-
-    @classmethod
-    def _split_polygon(cls, geom: shapely.Polygon) -> list[shapely.Polygon]:
-        """Splits a polygon in half either vertically or horizontally.
-
-        Args:
-            geom (shapely.Polygon): A shapely polygon
-
-        Returns:
-            geoms (list): A list of shapely polygons
-        """
-        bounds = geom.bounds
-
-        # If geometry is longer than it is tall, split along a vertical line
-        if (bounds[2] - bounds[0]) > (bounds[3] - bounds[1]):
-            x_mid = (bounds[0] + bounds[2]) / 2
-            splitter = shapely.LineString([(x_mid, bounds[1]), (x_mid, bounds[3])])
-
-        # Else, split along a horizontal line
-        else:
-            y_mid = (bounds[1] + bounds[3]) / 2
-            splitter = shapely.LineString([(bounds[0], y_mid), (bounds[2], y_mid)])
-
-        # Convert from geometry collection to list
-        geoms = shapely.ops.split(geom, splitter)
-        geoms = list(geoms.geoms)
-        return geoms
-
-    def _mrr_azimuth(self, mrr: shapely.Polygon):
-        """Calculates the azimuth of a rectangle on a cartesian plane.
-
-        In other words. this is the angle (w.r.t. the eastern direction) that you would need to rotate an axis-aligned
-        rectangle in order to get your rectangle.
-
-        Adapted from `this SO answer <https://stackoverflow.com/questions/66108528/angle-in-minimum-rotated-rectangle>`
-
-        Args:
-            mrr (shapely.Polygon): A Shapely polygon representing a minimum rotated rectangle
-        Returns:
-            The azimuthal angle in radians.
-        """
-        bbox = list(mrr.exterior.coords)
-        axis1 = np.linalg.norm(np.subtract(bbox[0], bbox[3]))
-        axis2 = np.linalg.norm(np.subtract(bbox[0], bbox[1]))
-
-        if axis1 <= axis2:
-            az = self._vector_azimuth(bbox[0], bbox[1])
-        else:
-            az = self._vector_azimuth(bbox[0], bbox[3])
-
-        return az
-
-    def _vector_azimuth(self, point1: tuple, point2: tuple):
-        """Calculates the azimuth between two points.
-
-        In other words, if you are standig on the plane looking east, this is the angle you have to turn
-        in order to point the same direction as the vector connecting the two points.
-
-        Adapted from `this SO answer <https://stackoverflow.com/questions/66108528/angle-in-minimum-rotated-rectangle>`
-
-        Returns:
-            The azimuthal angle in radians.
-        """
-        angle = np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
-        return angle if angle > 0 else angle + np.pi
-
-    def _tile_rect(
-        self,
-        mrr: shapely.Polygon,
-        size: float,
-        margin: float = 0,
-    ):
-        """Tiles an axis-aligned rectangle with squares of a given size.
-
-        Returns four different multipolygons, aligned with each corner of the minimum rotated rectangle.
-
-        Args:
-            mrr (shapely.Polygon): A Shapely polygon representing a minimum rotated rectangle
-            size (Float): The size of the square to use when tiling the MRR
-            margin (Float, optional): The margin around tiles. Units will depend on `self.proj_crs`
-
-        Returns:
-            p1, p2, p3, p4 (geopandas.GeoSeries): tiled rectangles as multipolygons.
-        """
-        buffered_size = size + 2 * margin
-
-        # Tile the shape, starting with the bottom left corner
-        xmin, ymin, xmax, ymax = mrr.bounds
-
-        w = xmax - xmin
-        h = ymax - ymin
-
-        ncols, col_remainder = divmod(w, buffered_size)
-        nrows, row_remainder = divmod(h, buffered_size)
-
-        # Tile the shape, starting with the bottom left corner
-        boxes = []
-        for row in range(int(nrows)):
-            for col in range(int(ncols)):
-                bl_x = col / ncols * w + xmin + margin  # bottom left x coord of the box
-                bl_y = row / nrows * h + ymin + margin
-                tr_x = bl_x + size
-                tr_y = bl_y + size
-
-                box = shapely.box(
-                    xmin=bl_x,
-                    ymin=bl_y,
-                    xmax=tr_x,
-                    ymax=tr_y,
-                )
-                boxes.append(box)
-
-        p1 = shapely.MultiPolygon(boxes)
-        p2 = shapely.affinity.translate(p1, col_remainder)  # shift right
-        p3 = shapely.affinity.translate(p1, row_remainder)  # shif up
-        p4 = shapely.affinity.translate(p1, col_remainder, row_remainder)
-
-        return p1, p2, p3, p4
-
-    # TODO fix this.... very slow
-    def _filter_multipolygon(
-        self,
-        bounding_poly: shapely.Polygon,
-        inner_polys: shapely.Polygon,
-    ):
-        best_intersections = []
-        for inner_poly in inner_polys:
-            intersections = []
-            for p in inner_poly.geoms:
-                if bounding_poly.contains(p):
-                    intersections.append(p)
-            if len(intersections) > len(best_intersections):
-                best_intersections = intersections
-
-        return shapely.MultiPolygon(best_intersections), len(best_intersections)
-
-    def __eq__(self, other: object) -> bool:
+    def __eq__(
+        self, other: object
+    ) -> bool:  # TODO need to compare buildings. Road networks
         bl = self.segments.equals(other.segments)
         return bl and (self.proj_crs == other.proj_crs)
