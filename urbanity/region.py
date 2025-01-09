@@ -1,5 +1,5 @@
 import copy
-from pathlib import Path, PurePath
+from pathlib import PurePath
 from typing import Self
 
 import geopandas as gpd

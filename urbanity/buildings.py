@@ -248,13 +248,19 @@ class Buildings:
     def create_voronoi_plots(
         self,
         boundary: shapely.Polygon = None,
-        min_building_footprint: float = 0,
+        flag_col: str | None = None,
         shrink: bool = True,
         building_rep: str = "mrr",
     ) -> list[tuple[2]]:
         """Make sure the boundary is the same crs as buildings.proj_crs!.
 
         Args:
+            boundary (shapely Polygon, optional): The boundary within which the voronoi polygons will be generated.
+                Defaults to None (Uses the convex hull of all buildings).
+            flag_col (str, optional): If set, buildings without the flag will be excluded when generating voronoi polygons.
+                Defaults to None.
+            shrink (bool, optional): If True, shrinks the boundary to approximate a convex hull around the contained buildings.
+                Defaults to False.
             building_rep (str, optional): The representation to use for the buildings. Options are "mrr" (minimum rotated rectangle)
                 "geometry" (default geometry)
 
@@ -277,10 +283,8 @@ class Buildings:
         if len(buildings) == 0:
             return (np.nan, np.nan)
 
-        # Remove buildings smaller than the min_building_footprint
-        tb = buildings.to_crs(self.proj_crs)
-        tb = tb[tb["geometry"].area >= min_building_footprint][["id"]]
-        buildings = buildings.merge(tb, how="right", on="id")  # filtering join
+        if flag_col:
+            buildings = buildings[buildings[flag_col]].copy()
 
         # Simplify buildings
         if building_rep == "mrr":

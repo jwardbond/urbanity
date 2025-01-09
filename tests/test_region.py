@@ -26,7 +26,10 @@ os.environ["GDAL_DATA"] = os.path.join(
 
 class TestMixins:
     def verify_object_creation(
-        self, ori_region: Region, in_region: Region, out_region: Region
+        self,
+        ori_region: Region,
+        in_region: Region,
+        out_region: Region,
     ) -> None:
         # region should be unchanged
         self.assertTrue(in_region == ori_region)
@@ -534,7 +537,7 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
 #         )  # HACK geopandas warning suppression
 
 #     def test_voronoi(self):
-#         from matplotlib import pyplot as plt  # noqa: I001
+#         from matplotlib import pyplot as plt
 #         import numpy as np
 
 #         spath = Path("./tests/test_files/test_files_segments.gpkg")

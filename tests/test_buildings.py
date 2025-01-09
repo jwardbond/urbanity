@@ -123,7 +123,7 @@ class TestBuildings(unittest.TestCase):
 
         voronoi_polys = buildings.create_voronoi_plots(
             boundary=None,
-            min_building_footprint=0,
+            flag_col=None,
             shrink=False,
             building_rep="mrr",
         )
