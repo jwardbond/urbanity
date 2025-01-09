@@ -426,7 +426,8 @@ class Region:
         segments = self.segments.copy()
         gdf = gdf[["geometry", feature_name]]
 
-        # Change to projected crs #TODO conserve geometry column for irreversible crs change
+        # Change to projected crs
+        original_geom = segments[["id", "geometry"]]
         segments = segments.to_crs(self.proj_crs)
         gdf = gdf.to_crs(self.proj_crs)
 
@@ -462,7 +463,9 @@ class Region:
             raise ValueError(msg)
 
         # change back to original crs
-        segments = segments.to_crs("EPSG:4326")
+        segments = segments.drop("geometry", axis=1)
+        segments = original_geom.merge(segments, on="id", how="inner")
+        segments.crs = original_geom.crs
 
         return Region(
             segments=segments,
@@ -474,21 +477,20 @@ class Region:
     def add_pseudo_plots(
         self,
         segment_flag: str = "",
+        progress_bar: bool = False,
         **kwargs,
     ) -> Self:
         """TODO.
 
         Args:
-            segment_flag (str, optional): _Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
-            minimum_building_area (float, optional): Removes buildings below a certain area from a segment. This is a good way to remove (e.g.) sheds when making the pseudo_plots
-            shrink (bool, optional): Shrink segment boundaries to building fronts (i.e. only consider backyards). Defaults to False.
-            building_mode (str, optional): _description_. Defaults to "mbr".
+            segment_flag (str, optional): Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
+            progress_bar (bool, optional): True will print a swifter progress bar. Defaults to False
             **kwargs: Other arguments that will be passed to Buildings.create_voronoi_plots.
 
         Returns:
             Region: a new Region object
         """
-        buildings = self.buildings
+        buildings = self.buildings.copy()
 
         # Filter segments
         segments = (
@@ -506,7 +508,10 @@ class Region:
             return polys
 
         segments["voronoi_polys"] = (
-            segments["geometry"].to_crs(buildings.proj_crs).apply(vpoly_apply)
+            segments["geometry"]
+            .to_crs(buildings.proj_crs)
+            .swifter.progress_bar(progress_bar)
+            .apply(vpoly_apply)
         )
 
         # Extract the voronoi polygons and associated building ids
@@ -549,8 +554,10 @@ class Region:
         if self.buildings is not None:
             self.buildings.save(save_folder / "buildings")
 
-    def __eq__(
-        self, other: object
-    ) -> bool:  # TODO need to compare buildings. Road networks
+    def __eq__(self, other: Self) -> bool:
         bl = self.segments.equals(other.segments)
-        return bl and (self.proj_crs == other.proj_crs)
+        bl = bl and self.proj_crs == other.proj_crs
+
+        bl = bl and self.buildings == other.buildings
+
+        return bl
