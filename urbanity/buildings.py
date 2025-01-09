@@ -381,3 +381,16 @@ class Buildings:
         data = gpd.GeoDataFrame(data, geometry="geometry", crs=gdfs[0].crs)
 
         return Buildings(data=data, proj_crs=proj_crs)
+
+    def __eq__(self, other: Self) -> bool:
+        bl = self.data.equals(other.data)
+        bl = bl and self.proj_crs == other.proj_crs
+
+        return bl
+
+    def copy(self, deep=True) -> Self:
+        """Returns a deepcopy by default to be consistent with pandas behaviour."""
+        data = self.data.copy() if deep else self.data
+        proj_crs = self.proj_crs
+
+        return Buildings(data=data, proj_crs=proj_crs)
