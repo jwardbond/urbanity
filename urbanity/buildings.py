@@ -1,4 +1,5 @@
 import pathlib
+import warnings
 from functools import reduce
 from typing import Self
 
@@ -14,8 +15,8 @@ from .polyronoi import voronoiDiagram4plg
 
 class Buildings:
     def __init__(self, data: gpd.GeoDataFrame, proj_crs: str):
-        data = data.to_crs("EPSG:4326")  # Default crs
-
+        if data.crs != "EPSG:4326":
+            data = data.to_crs("EPSG:4326")  # Default crs
         if "area" not in data:
             data["area"] = data.to_crs(proj_crs)["geometry"].area
         if "id" not in data:
@@ -166,6 +167,84 @@ class Buildings:
 
         return Buildings(new_data, self.proj_crs)
 
+    def sjoin_addresses(
+        self,
+        ad_df: gpd.GeoDataFrame,
+        join_nearest: bool = False,
+        max_distance: float = 5.0,
+    ) -> Self:
+        data = self.data.copy()
+        original_geom = data[["id", "geometry"]]
+
+        ad_df = ad_df.copy()
+
+        data = data.to_crs(self.proj_crs)
+
+        # Address df should be in projected crs
+
+        if ad_df.crs != self.proj_crs:
+            warnings.warn(
+                f"Address crs did not match building projected crs:{self.proj_crs}. Attempting to convert",
+                stacklevel=2,
+            )
+            ad_df.to_crs(self.proj_crs)
+
+        # Perform join
+        new_data = gpd.sjoin(data, ad_df, how="left", predicate="contains")
+
+        # Anecdotal evidence suggests that some address points might be *just*
+        # outside the building polygons. This code assigns the points remaining
+        # after the previous join to the nearest polygon
+        if join_nearest:
+            remaining = ad_df[~ad_df.index.isin(new_data["index_right"])]
+
+            round1 = new_data[new_data["index_right"].notna()]
+            round2 = gpd.sjoin_nearest(
+                data,
+                remaining,
+                how="inner",
+                max_distance=max_distance,
+            )
+            has_addr = round1["id"].to_list() + round2["id"].to_list()
+            no_addr = new_data[~new_data["id"].isin(has_addr)]
+
+            # Copy column order and reset index so concat works
+            round1 = round1[new_data.columns].reset_index(drop=True)
+            round2 = round2[new_data.columns].reset_index(drop=True)
+            no_addr = no_addr[new_data.columns].reset_index(drop=True)
+            new_data = gpd.GeoDataFrame(pd.concat([round1, round2, no_addr]))
+
+        # Combine duplicate rows, since some buildings can have more than one
+        # associated addres, all info from ad_df is combined into a list for a
+        # given building id
+        agg_funcs = {}
+        for col in new_data:
+            if col == "id":
+                continue
+            elif col in data:  # noqa: RET507
+                agg_funcs[col] = "first"
+            else:
+                agg_funcs[col] = lambda x: list(set(x))
+
+        new_data = new_data.groupby("id").agg(agg_funcs).reset_index()
+
+        # Convert instances of [nan] to empty list
+        new_cols = [col for col in new_data.columns if col not in data]
+        for col in new_cols:
+            new_data[col] = new_data[col].apply(
+                lambda x: []
+                if isinstance(x, list) and len(x) == 1 and pd.isna(x[0])
+                else x,
+            )
+
+        # Output formatting
+        new_data = new_data.rename(columns={"index_right": "address_indices"})
+        new_data = new_data.drop("geometry", axis=1)
+        new_data = original_geom.merge(new_data, on="id", how="inner")
+        new_data.crs = original_geom.crs
+
+        return Buildings(new_data, self.proj_crs)
+
     def create_voronoi_plots(
         self,
         boundary: shapely.Polygon = None,
@@ -191,7 +270,9 @@ class Buildings:
             boundary = buildings["geometry"].unary_union.convex_hull
 
         # Get all buildings within the boundary
-        buildings = buildings[buildings["geometry"].within(boundary)]
+        buildings = buildings[
+            buildings["geometry"].intersects(boundary, align=False)
+        ]  # HACK
 
         if len(buildings) == 0:
             return (np.nan, np.nan)

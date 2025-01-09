@@ -258,3 +258,49 @@ class TestBuildings(unittest.TestCase):
 
         # Data should be unchanged
         assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)
+
+    def test_sjoin_addresses(self) -> None:
+        # Setup
+        ad_df = gpd.GeoDataFrame(
+            {
+                "address": [
+                    "101 Main St",
+                    "202 Second Ave",
+                    "303 Third Blvd",
+                    "404 Fourth Rd",
+                ],
+                "geometry": [
+                    shapely.Point(0.5, 0.5),  # Inside building 0
+                    shapely.Point(2, 2),  # Inside building 0
+                    shapely.Point(-10, -9),  # 1m above building 1
+                    shapely.Point(15, 16),  # 6m above building 22
+                ],
+            },
+            crs=self.proj_crs,
+        )
+
+        buildings = self.buildings
+
+        buildings = buildings.sjoin_addresses(
+            ad_df,
+            join_nearest=True,
+            max_distance=5,
+        )
+
+        output = buildings.data.copy()
+        output.index = output["id"]  # for convenience
+
+        # Building 0 should have the first two addresses
+        self.assertIn(0, output.loc[0]["address_indices"])
+        self.assertIn(1, output.iloc[0]["address_indices"])
+
+        # Building 1 should have the third address
+        self.assertIn(2, output.loc[1]["address_indices"])
+
+        # Building 22 and 31 should have nothing
+        self.assertEqual(len(output.loc[22]["address_indices"]), 0)
+        self.assertEqual(len(output.loc[31]["address_indices"]), 0)
+
+        # Data should be unchanged
+        df = buildings.data[self.buildings.data.columns]
+        assert_geodataframe_equal(df, self.buildings.data)
