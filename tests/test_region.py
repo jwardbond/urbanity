@@ -1,10 +1,10 @@
 import copy
 import os
+import shutil
 import sys
 import unittest
 import warnings
 from pathlib import Path
-import shutil
 
 import geopandas as gpd
 import shapely
@@ -12,6 +12,9 @@ from geopandas.testing import assert_geodataframe_equal
 
 import utils
 from urbanity import Buildings, Region
+
+# TODO remove mixins and just drop columns then test if df are still equal
+
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -22,27 +25,23 @@ os.environ["GDAL_DATA"] = os.path.join(
 
 
 class TestMixins:
-    def assertCrsUnchanged(self, x: Region, y: Region):
-        """Asserts that crs are unchanged between two region objects"""
-        self.assertEqual(x.buildings.proj_crs, y.buildings.proj_crs)
-        self.assertEqual(y.buildings.proj_crs, x.proj_crs)
-        self.assertEqual(x.proj_crs, y.proj_crs)
+    def verify_object_creation(
+        self, ori_region: Region, in_region: Region, out_region: Region
+    ) -> None:
+        # region should be unchanged
+        self.assertTrue(in_region == ori_region)
 
-        # Unprojected CRS should be the same
-        self.assertEqual(x.buildings.data.crs, y.buildings.data.crs)
-        self.assertEqual(y.buildings.data.crs, x.segments.crs)
-        self.assertEqual(x.segments.crs, y.segments.crs)
+        # output should be different
+        self.assertTrue(out_region != in_region)
 
-    def assertGeometryColumnsEqual(
-        self, gdf1: gpd.GeoDataFrame, gdf2: gpd.GeoDataFrame
-    ):
-        """Asserts that the geometry columns of two GeoDataFrames are the same for rows with the same value in an 'id' column"""
-        merged = gdf1.merge(gdf2, on="id", suffixes=("_1", "_2"))
-        for _, row in merged.iterrows():
-            self.assertTrue(shapely.equals(row["geometry_1"], row["geometry_2"]))
+        # output should have same projected crs
+        self.assertEqual(out_region.proj_crs, in_region.proj_crs)
+
+        # data should be conserved
+        assert_geodataframe_equal(ori_region.segments, in_region.segments)
 
 
-class TestRegion(unittest.TestCase, TestMixins):
+class TestRegion(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         warnings.simplefilter(
@@ -119,8 +118,6 @@ class TestRegion(unittest.TestCase, TestMixins):
         loaded = Region.load(save_folder, proj_crs="EPSG:3347")
 
         assert_geodataframe_equal(region.segments, loaded.segments, check_like=True)
-        print(type(region.road_network))
-        print(type(loaded.road_network))
         assert_geodataframe_equal(
             region.road_network,
             loaded.road_network,
@@ -247,32 +244,19 @@ class TestRegionFeatureMethods(unittest.TestCase, TestMixins):
 
         output = region.subtract_polygons(polygons)
 
-        # region should be unchanged
-        self.assertTrue(region == self.region)
-
-        # output should be different
-        self.assertFalse(output == region)
-
-        # output should have same crs
-        self.assertEqual(output.proj_crs, region.proj_crs)
-
-        # output should have WSG84 CRS
-        self.assertEqual(output.segments.crs, "EPSG:4326")
+        # objects should be created correctly
+        self.verify_object_creation(self.region, region, output)
 
         # output should have a smaller total area
         self.assertLess(
             output.segments.to_crs(output.proj_crs).area.sum(),
             region.segments.to_crs(region.proj_crs).area.sum(),
         )
-        # self.assertAlmostEqual(
-        #     output.segments.to_crs(output.proj_crs).area.sum(),
-        #     region.segments.to_crs(region.proj_crs).area.sum()
-        #     - polygons.to_crs(region.proj_crs).area.sum(),
-        # )
 
     def test_agg_features(self) -> None:
         region = copy.deepcopy(self.region)
         polygons = copy.deepcopy(self.buildings)
+
         output = region.agg_features(
             polygons,
             feature_name="height",
@@ -280,20 +264,16 @@ class TestRegionFeatureMethods(unittest.TestCase, TestMixins):
             fillnan=0,
         )
 
-        # Region should be unchanged
-        self.assertTrue(region == self.region)
+        # objects should be created correctly
+        self.verify_object_creation(self.region, region, output)
+        in_seg = region.segments
+        out_seg = output.segments
 
-        # segments should be identical
-        self.assertGeometryColumnsEqual(region.segments, self.region.segments)
+        # output segments should still contain all data from input, in the same crs
+        assert_geodataframe_equal(in_seg, out_seg[in_seg.columns])
 
-        # output should be different
-        self.assertFalse(output == region)
-
-        # output should have same crs
-        self.assertEqual(output.proj_crs, region.proj_crs)
-
-        # output should have WSG84 CRS
-        self.assertEqual(output.segments.crs, "EPSG:4326")
+        # output should have a height column
+        self.assertIn("height", output.segments.columns)
 
         # output should have the same total area
         self.assertAlmostEqual(
@@ -315,30 +295,16 @@ class TestRegionFeatureMethods(unittest.TestCase, TestMixins):
 
         # run disaggregator <-sounds made-up
         output = region.disagg_features(polygons, "pop", how="area")
+        in_seg = region.segments
+        out_seg = output.segments
 
-        # Region should be a new object
-        self.assertTrue(region == self.region)
+        # objects should be created correctly
+        self.verify_object_creation(self.region, region, output)
 
-        # Segments should be the same
-        self.assertGeometryColumnsEqual(region.segments, self.region.segments)
+        # output segments should still contain all data from input, in the same crs
+        assert_geodataframe_equal(in_seg, out_seg[in_seg.columns])
 
-        # output should be different
-        self.assertFalse(output == region)
-
-        # output should have same crs
-        self.assertEqual(output.proj_crs, region.proj_crs)
-
-        # output should have WSG84 CRS
-        self.assertEqual(output.segments.crs, "EPSG:4326")
-
-        # output should have the same total area
-        self.assertAlmostEqual(
-            output.segments.to_crs(output.proj_crs).area.sum(),
-            region.segments.to_crs(region.proj_crs).area.sum(),
-            4,
-        )
-
-        # output should have a new feature
+        # output should have the new feature
         self.assertTrue("pop" in output.segments)
 
         # the population in the leftmost region should be circle2 and half of circle1
@@ -346,7 +312,6 @@ class TestRegionFeatureMethods(unittest.TestCase, TestMixins):
             output.segments[output.segments["id"] == 0]["pop"].sum(),
             circle1.area / 2 + circle2.area,
         )
-
         self.assertAlmostEqual(
             output.segments[output.segments["id"] == 1]["pop"].sum(),
             circle1.area / 2,
@@ -361,7 +326,7 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
     def setUp(self) -> None:
         warnings.simplefilter(
             "ignore",
-            category=DeprecationWarning,
+            category=(DeprecationWarning, FutureWarning),
         )  # HACK geopandas warning suppression
 
         self.proj_crs = "EPSG:3347"
@@ -374,7 +339,7 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
             [
                 shapely.Polygon([(70, 0), (70, 10), (60, 10), (60, 0), (70, 0)]),
                 shapely.Polygon([(80, 0), (80, 10), (70, 10), (70, 0), (80, 0)]),
-            ]
+            ],
         )
 
         segments = gpd.GeoDataFrame(
@@ -436,39 +401,58 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
         region = self.region
         old_segments = region.segments.copy()
 
-        region = region.flag_segments_by_buildings(
+        output = region.flag_segments_by_buildings(
             flag_name="sfh",
             threshold_pct=0.7,
             threshold_num=3,
             building_flag="sfh",
         )
+        in_seg = region.segments
+        out_seg = output.segments
 
-        segments = region.segments
+        # objects should be created correctly
+        self.verify_object_creation(self.region, region, output)
 
-        # Columns should be the same + one new column
-        self.assertTrue("sfh" in segments)
-        self.assertTrue(all(col in segments for col in old_segments.columns))
+        # output should have a new column
+        self.assertTrue("sfh" in out_seg)
 
-        # Data should be unchanged without the new column
-        assert_geodataframe_equal(segments.drop(columns=["sfh"]), old_segments)
+        # output should be otherwise unchanged from input
+        self.assertTrue(all(col in out_seg for col in old_segments.columns))
+        assert_geodataframe_equal(in_seg, out_seg[in_seg.columns])
 
         # Segment 1 should not be flagged (threshold pct is 4/6 <= 0.7)
-        self.assertFalse(segments.iloc[0]["sfh"])
+        self.assertFalse(out_seg.iloc[0]["sfh"])
 
         # Segment 2 should be flagged (threshold pct is 3/4 >= 0.7)
-        self.assertTrue(segments.iloc[1]["sfh"])
+        self.assertTrue(out_seg.iloc[1]["sfh"])
 
         # Segment 3 should not be flagged (threshold num is 2 <= 3)
-        self.assertFalse(segments.iloc[2]["sfh"])
+        self.assertFalse(out_seg.iloc[2]["sfh"])
 
     def test_add_pseudo_plots(self):
         """Test basic functionality of add_pseudo_plots."""
         region = copy.deepcopy(self.region)
 
-        result = region.add_pseudo_plots()
+        output = region.add_pseudo_plots()
+
+        # Objects should be created correctly
+        self.verify_object_creation(self.region, region, output)
+
+        # Segments should be unchanged
+        in_seg = region.segments
+        out_seg = output.segments
+        assert_geodataframe_equal(in_seg, out_seg)
+
+        # Building data should have a "voronoi_geometry" column
+        self.assertTrue("pseudo_plot" in output.buildings.data.columns)
+
+        # Building data should be otherwise unchanged
+        in_build = region.buildings.data
+        out_build = output.buildings.data
+        assert_geodataframe_equal(in_build, out_build[in_build.columns])
 
         # Building ids 6,7,8,9 should have pseudo plots, the rest should not
-        filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
+        filtered = output.buildings.data[output.buildings.data["pseudo_plot"].notna()]
         self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
 
         # Buildings should be within voronoi polys
@@ -478,20 +462,6 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
                 for _, r in filtered.iterrows()
             ),
         )
-
-        # BASIC FUNCTIONALITY TESTS
-        # Should return an instance of Region
-        self.assertIsInstance(result, Region)
-
-        # Building data should have a "voronoi_geometry" column
-        self.assertTrue("pseudo_plot" in result.buildings.data.columns)
-
-        # Length of building and segment data should be unchanged
-        self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
-        self.assertEqual(len(result.segments), len(self.region.segments))
-
-        # Crs should not change
-        self.assertCrsUnchanged(result, self.region)
 
     def test_add_pseudo_plots_with_flag(self):
         """Test basic functionality of add_pseudo_plots."""
@@ -503,11 +473,35 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
             threshold_num=3,
             building_flag="sfh",
         )
-        result = region.add_pseudo_plots(segment_flag="sfh")
+        output = region.add_pseudo_plots(segment_flag="sfh")
+
+        ## Objects should be created correctly
+        # self.verify_object_creation(self.region, region.drop(columns=["sfh"]), output)
+
+        # Segments should be unchanged
+        in_seg = region.segments
+        out_seg = output.segments
+        assert_geodataframe_equal(in_seg, out_seg)
+
+        # Building data should have a "voronoi_geometry" column
+        self.assertTrue("pseudo_plot" in output.buildings.data.columns)
+
+        # Building data should be otherwise unchanged
+        in_build = region.buildings.data
+        out_build = output.buildings.data
+        assert_geodataframe_equal(in_build, out_build[in_build.columns])
 
         # Building ids 6,7,8,9 should have pseudo plots, the rest should not
-        filtered = result.buildings.data[result.buildings.data["pseudo_plot"].notna()]
+        filtered = output.buildings.data[output.buildings.data["pseudo_plot"].notna()]
         self.assertTrue(all(i in filtered["id"] for i in [6, 7, 8, 9]))
+
+        # Buildings should be within voronoi polys
+        self.assertTrue(
+            all(
+                shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
+                for _, r in filtered.iterrows()
+            ),
+        )
 
         # ###
         # from matplotlib import pyplot as plt
@@ -531,28 +525,6 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
         # plt.show()
         # ###
 
-        # Buildings should be within voronoi polys
-        self.assertTrue(
-            all(
-                shapely.within(r["geometry"], r["pseudo_plot"].buffer(1e-9))
-                for _, r in filtered.iterrows()
-            ),
-        )
-
-        # BASIC FUNCTIONALITY TESTS
-        # Should return an instance of Region
-        self.assertIsInstance(result, Region)
-
-        # Building data should have a "voronoi_geometry" column
-        self.assertTrue("pseudo_plot" in result.buildings.data.columns)
-
-        # Length of building and segment data should be unchanged
-        self.assertEqual(len(result.buildings.data), len(self.region.buildings.data))
-        self.assertEqual(len(result.segments), len(self.region.segments))
-
-        # Crs should not change
-        self.assertCrsUnchanged(result, self.region)
-
 
 # class TestVoronoi(unittest.TestCase):
 #     def setUp(self) -> None:
@@ -565,15 +537,18 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
 #         from matplotlib import pyplot as plt  # noqa: I001
 #         import numpy as np
 
-#         spath = Path("./tests/test_files/test_files_segments.geojson")
-#         bpath = Path("./tests/test_files/test_files_osm_buildings.geojson")
+#         spath = Path("./tests/test_files/test_files_segments.gpkg")
+#         bpath = Path("./tests/test_files/test_files_osm_buildings.gpkg")
 
 #         city = Region.load_from_files(
 #             segments=spath,
 #             buildings=bpath,
 #             proj_crs="EPSG:3347",
 #         )
-#         # city.buildings.data = city.buildings.data.sample(frac=0.4, random_state=42)
+
+#         city.segments = city.segments.sample(20)
+
+#         import time
 
 #         city = city.add_pseudo_plots(building_rep="geometry", shrink=False)
 
