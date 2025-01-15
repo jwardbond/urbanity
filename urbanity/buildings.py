@@ -204,7 +204,13 @@ class Buildings:
                 remaining,
                 how="inner",
                 max_distance=max_distance,
+                distance_col="dist",
             )
+
+            # Keep only the nearest matches
+            round2 = round2.sort_values(["index_right", "dist"])
+            round2 = round2.drop_duplicates(subset="index_right", keep="first")
+
             has_addr = round1["id"].to_list() + round2["id"].to_list()
             no_addr = new_data[~new_data["id"].isin(has_addr)]
 

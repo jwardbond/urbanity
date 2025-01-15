@@ -268,12 +268,14 @@ class TestBuildings(unittest.TestCase):
                     "202 Second Ave",
                     "303 Third Blvd",
                     "404 Fourth Rd",
+                    "505 Fifth Cres",
                 ],
                 "geometry": [
                     shapely.Point(0.5, 0.5),  # Inside building 0
                     shapely.Point(2, 2),  # Inside building 0
                     shapely.Point(-10, -9),  # 1m above building 1
                     shapely.Point(15, 16),  # 6m above building 22
+                    shapely.Point(9.5, 2),  # 3.5m left of 22, 4.5 m right of 1
                 ],
             },
             crs=self.proj_crs,
@@ -290,15 +292,18 @@ class TestBuildings(unittest.TestCase):
         output = buildings.data.copy()
         output.index = output["id"]  # for convenience
 
-        # Building 0 should have the first two addresses
+        # Building 0 should have the first two addresses, but not the fifth one
         self.assertIn(0, output.loc[0]["address_indices"])
-        self.assertIn(1, output.iloc[0]["address_indices"])
+        self.assertIn(1, output.loc[0]["address_indices"])
+        self.assertNotIn(4, output.loc[0]["address_indices"])
 
         # Building 1 should have the third address
         self.assertIn(2, output.loc[1]["address_indices"])
 
+        # Building 22 should have the fifth address
+        self.assertIn(4, output.loc[22]["address_indices"])
+
         # Building 22 and 31 should have nothing
-        self.assertEqual(len(output.loc[22]["address_indices"]), 0)
         self.assertEqual(len(output.loc[31]["address_indices"]), 0)
 
         # Data should be unchanged
