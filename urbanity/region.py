@@ -510,7 +510,7 @@ class Region:
         segments["voronoi_polys"] = (
             segments["geometry"]
             .to_crs(buildings.proj_crs)
-            .swifter.progress_bar(progress_bar)
+            # .swifter.progress_bar(progress_bar)
             .apply(vpoly_apply)
         )
 
@@ -520,7 +520,7 @@ class Region:
 
         voronoi_df = pd.DataFrame(
             exploded["voronoi_polys"].tolist(),
-            columns=["pseudo_plot", "id"],
+            columns=["id", "pseudo_plot"],
         )
 
         buildings.data = buildings.data.merge(voronoi_df, how="left", on="id")

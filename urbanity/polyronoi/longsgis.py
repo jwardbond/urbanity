@@ -10,6 +10,7 @@ import math
 import geopandas as gpd
 import numpy as np
 import shapely
+import time
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import voronoi_diagram as svd
 
@@ -98,8 +99,18 @@ def densify_polygon(gdf: gpd.GeoDataFrame, spacing="auto") -> gpd.GeoDataFrame: 
 
     # Add points to boundary of polygon
     gdf["geometry"] = ext_list.map(
-        lambda x: Polygon(_pnts_on_line_(np.array(x), spacing=spacing)),
+        lambda x: Polygon(_pnts_on_line_(np.array(list(x)), spacing=spacing))
     )
+    # ext_list = (
+    #     gdf["geometry"]
+    #     .swifter.progress_bar(False)
+    #     .apply(lambda g: list(g.exterior.coords))
+    # )
+
+    # # Add points to boundary of polygon
+    # gdf["geometry"] = ext_list.swifter.progress_bar(False).apply(
+    #     lambda x: Polygon(_pnts_on_line_(np.array(list(x)), spacing=spacing))
+    # )
 
     # Drop the temp exterior point column
     return gdf
@@ -133,7 +144,9 @@ def voronoiDiagram4plg(  # noqa: N802
     smp = gdf.unary_union
 
     # create primary voronoi diagram by invoking shapely.ops.voronoi_diagram (new in Shapely 1.8.dev0)
+    s1 = time.time()
     smp_vd = svd(smp)
+    e1 = time.time()
 
     # convert to GeoSeries and explode to single polygons
     # note that it is NOT supported to GeoDataFrame directly
@@ -144,19 +157,29 @@ def voronoiDiagram4plg(  # noqa: N802
 
     # convert to GeoDataFrame
     # note that if gdf was shapely.geometry.MultiPolygon, it has no attribute 'crs'
-    gdf_vd_primary = gpd.geodataframe.GeoDataFrame(geometry=gs, crs=gdf.crs)
+    gdf_vd_primary = gpd.geodataframe.GeoDataFrame(
+        geometry=gs,
+        crs=gdf.crs,
+    ).reset_index(drop=True)
 
-    # reset index
-    gdf_vd_primary.reset_index(drop=True)  # append(gdf)
+    # spatial join by intersecting and dissolve by polygon id
+    gdf_vd_primary["saved_geom"] = gdf_vd_primary["geometry"]
+    # gdf_temp = (
+    #     gpd.sjoin(gdf_vd_primary, gdf, how="inner", predicate="intersects")
+    #     .dissolve(by="index_right")
+    #     .reset_index(drop=True)
+    # )
 
-    # spatial join by intersecting and dissolve by `index_right`
-    gdf_temp = (
-        gpd.sjoin(gdf_vd_primary, gdf, how="inner", predicate="intersects")
-        .dissolve(by="index_right")
-        .reset_index(drop=True)
-    )
+    # print(gdf_temp)
+
+    gdf_temp = gpd.sjoin(gdf, gdf_vd_primary, how="inner", predicate="intersects")
+    gdf_temp["geometry"] = gdf_temp["saved_geom"]
+    gdf_temp = gdf_temp.drop(columns=["saved_geom", "index_right"])
+    gdf_temp = gdf_temp.dissolve(by="id").reset_index()
+
     gdf_vd = gpd.clip(gdf_temp, mask)
     gdf_vd["geometry"] = gdf_vd["geometry"].map(dropHoles)
+
     return gdf_vd
 
 

@@ -325,6 +325,7 @@ class Buildings:
         # Voronoi
         vd = voronoiDiagram4plg(buildings, boundary, densify=True)
         vd = vd.to_crs(original_crs)
+        vd = vd[["id", "geometry"]]
         vd = list(vd.itertuples(index=False, name=None))
 
         return vd
