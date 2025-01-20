@@ -562,7 +562,7 @@ class Region:
         bl = self.segments.equals(other.segments)
         bl = bl and self.proj_crs == other.proj_crs
 
-        if self._buildings is not None:
-            bl = bl and self.buildings == other.buildings
+        if self._buildings:
+            bl = bl and other._buildings and self.buildings == other.buildings
 
         return bl
