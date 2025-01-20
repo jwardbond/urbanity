@@ -302,21 +302,7 @@ class Buildings:
             raise AttributeError(msg)
 
         # Shrink boundary to the concave hull of the two most streetfacing (closest to the boundary)
-        # points of each building #TODO remove commented code
         if shrink:
-            # if building_rep != "mrr":
-            #     warnings.warn(
-            #         "shrink=True and building type != MRR, this may mess up plot generation.",
-            #         stacklevel=2,
-            #     )
-            # boundary_points = []
-            # for _, r in buildings.iterrows():
-            #     boundary_points += utils.order_closest_vertices(
-            #         r[building_rep],
-            #         boundary,
-            #     )[:2]
-
-            # boundary = shapely.concave_hull(shapely.MultiPoint(boundary_points), 1)
             boundary = shapely.concave_hull(
                 buildings["geometry"].unary_union,
                 ratio=0.8,

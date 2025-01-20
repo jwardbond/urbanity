@@ -15,6 +15,7 @@ import shapely
 import utils
 
 # TODO Handle missing boundaries (download square box)
+# TODO rewrite with caleb's code
 
 
 def download_osm_boundary(
@@ -45,7 +46,7 @@ def download_osm_boundary(
 
     if savefolder:
         savefolder.mkdir(exist_ok=True, parents=True)
-        savepath = savefolder / (savefolder.stem + "_boundary.gpkg")
+        savepath = savefolder / (savefolder.stem + "_boundary")
         utils.save_geodf_with_prompt(gdf, savepath)
 
     return polygon
@@ -86,7 +87,7 @@ def download_osm_network(
 
     # Save and return
     if savefolder:
-        savepath = savefolder / (savefolder.stem + "_road_network.gpkg")
+        savepath = savefolder / (savefolder.stem + "_road_network")
         utils.save_geodf_with_prompt(network, savepath)
 
     return network
@@ -145,7 +146,7 @@ def download_osm_buildings(
 
     # Save and return
     if savefolder:
-        savepath = savefolder / (savefolder.stem + "_osm_buildings.gpkg")
+        savepath = savefolder / (savefolder.stem + "_osm_buildings")
         utils.save_geodf_with_prompt(buildings, savepath)
 
     return buildings
@@ -194,7 +195,7 @@ def download_osm_generic(
 
     # Save and return
     if savefolder:
-        savepath = savefolder / (savefolder.stem + f"_osm_{savename}.gpkg")
+        savepath = savefolder / (savefolder.stem + f"_osm_{savename}")
         utils.save_geodf_with_prompt(gdf, savepath)
 
     return gdf
@@ -278,7 +279,7 @@ def download_ms_buildings(
     buildings.insert(loc=0, column="id", value=buildings.index)
 
     if savefolder:
-        savepath = savefolder / (savefolder.stem + "_ms_buildings.gpkg")
+        savepath = savefolder / (savefolder.stem + "_ms_buildings")
         utils.save_geodf_with_prompt(buildings, savepath)
 
     return buildings
@@ -289,7 +290,7 @@ def _parse_polygon(
 ):
     """Parses polygon representations to return a shapely polygon."""
     if isinstance(polygon, PurePath):
-        polygon = gpd.read_file(polygon).iloc[0]["geometry"]
+        polygon = gpd.read_parquet(polygon).iloc[0]["geometry"]
     elif not isinstance(polygon, shapely.Polygon):
         msg = f"Expected shapely polygon or Path, got {type(polygon)}"
         raise TypeError(msg)

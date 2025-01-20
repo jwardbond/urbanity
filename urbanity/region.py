@@ -52,7 +52,7 @@ class Region:
         self.proj_crs = proj_crs
         self.segments = segments
         self.road_network = road_network
-        self.buildings = buildings  # property
+        self.buildings = buildings  # property w _buildings
 
     @property
     def buildings(self) -> Buildings:
@@ -436,11 +436,12 @@ class Region:
             gdf["area"] = gdf["geometry"].area
 
             # Split the gdf by segment boundaries
+            # dropping the area temporarily just helps with naming
             split_gdf = gpd.overlay(
                 gdf,
                 segments.drop(labels=["area"], axis=1),
                 how="intersection",
-            )  # Dropping the area temporarily just helps with naming
+            )
 
             # Split feature proportional to area
             split_gdf["split_area"] = split_gdf["geometry"].area
@@ -538,6 +539,9 @@ class Region:
         """Saves a Region object as a collection of geojson.
 
         If the folder already exists, then it appends a number. Use load_region constructor function to reverse.
+
+        Args:
+            save_folder(pathlib.PurePath): Path to the save folder.
         """
         # Make save folder
         i = 0
@@ -558,6 +562,7 @@ class Region:
         bl = self.segments.equals(other.segments)
         bl = bl and self.proj_crs == other.proj_crs
 
-        bl = bl and self.buildings == other.buildings
+        if self._buildings is not None:
+            bl = bl and self.buildings == other.buildings
 
         return bl

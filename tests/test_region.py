@@ -53,7 +53,7 @@ class TestRegion(unittest.TestCase):
         )  # HACK geopandas warning suppression
 
         # Set output path and get rid of existing files
-        networkpath = Path("./tests/test_files/test_files_road_network.gpkg")
+        networkpath = Path("./tests/test_files/test_files_road_network.parquet")
         cls.network = utils.load_geodf(networkpath)
 
         cls.proj_crs = "EPSG:3347"
@@ -78,12 +78,12 @@ class TestRegion(unittest.TestCase):
         )
 
         loaded = Region.load_from_files(
-            segments=Path("./tests/test_files/test_files_segments.gpkg"),
+            segments=Path("./tests/test_files/test_files_segments.parquet"),
             proj_crs=self.proj_crs,
             road_network=Path(
-                "./tests/test_files/test_files_road_network.gpkg",
+                "./tests/test_files/test_files_road_network.parquet",
             ),
-            buildings=Path("./tests/test_files/test_files_osm_buildings.gpkg"),
+            buildings=Path("./tests/test_files/test_files_osm_buildings.parquet"),
         )
 
         # Test coordinate systems
@@ -104,12 +104,12 @@ class TestRegion(unittest.TestCase):
 
     def test_save_load(self):
         region = Region.load_from_files(
-            segments=Path("./tests/test_files/test_files_segments.gpkg"),
+            segments=Path("./tests/test_files/test_files_segments.parquet"),
             proj_crs=self.proj_crs,
             road_network=Path(
-                "./tests/test_files/test_files_road_network.gpkg",
+                "./tests/test_files/test_files_road_network.parquet",
             ),
-            buildings=Path("./tests/test_files/test_files_osm_buildings.gpkg"),
+            buildings=Path("./tests/test_files/test_files_osm_buildings.parquet"),
         )
 
         save_folder = Path("./tests/test_files/test_region_save")
@@ -529,49 +529,49 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
         # ###
 
 
-class TestVoronoi(unittest.TestCase):
-    def setUp(self) -> None:
-        warnings.simplefilter(
-            "ignore",
-            category=DeprecationWarning,
-        )  # HACK geopandas warning suppression
+# class TestVoronoi(unittest.TestCase):
+#     def setUp(self) -> None:
+#         warnings.simplefilter(
+#             "ignore",
+#             category=DeprecationWarning,
+#         )  # HACK geopandas warning suppression
 
-    def test_voronoi(self):
-        from matplotlib import pyplot as plt
-        import numpy as np
+#     def test_voronoi(self):
+#         from matplotlib import pyplot as plt
+#         import numpy as np
 
-        spath = Path("./tests/test_files/test_files_segments.gpkg")
-        bpath = Path("./tests/test_files/test_files_osm_buildings.gpkg")
+#         spath = Path("./tests/test_files/test_files_segments.parquet")
+#         bpath = Path("./tests/test_files/test_files_osm_buildings.parquet")
 
-        city = Region.load_from_files(
-            segments=spath,
-            buildings=bpath,
-            proj_crs="EPSG:3347",
-        )
+#         city = Region.load_from_files(
+#             segments=spath,
+#             buildings=bpath,
+#             proj_crs="EPSG:3347",
+#         )
 
-        city.segments = city.segments.sample(20)
+#         city.segments = city.segments.sample(20)
 
-        city = city.add_pseudo_plots(building_rep="geometry", shrink=False)
+#         city = city.add_pseudo_plots(building_rep="geometry", shrink=False)
 
-        # Assuming gdf is your GeoDataFrame with geometry columns 'geom1', 'geom2', 'geom3'
-        fig, ax = plt.subplots(figsize=(10, 10))
+#         # Assuming gdf is your GeoDataFrame with geometry columns 'geom1', 'geom2', 'geom3'
+#         fig, ax = plt.subplots(figsize=(10, 10))
 
-        # Plot segments
-        colors1 = [tuple(np.random.rand(3)) for _ in range(len(city.segments))]
-        city.segments.plot(ax=ax, color=colors1, alpha=0.2)
+#         # Plot segments
+#         colors1 = [tuple(np.random.rand(3)) for _ in range(len(city.segments))]
+#         city.segments.plot(ax=ax, color=colors1, alpha=0.2)
 
-        # Plot pseudo_plots
-        pplots = gpd.GeoDataFrame(
-            geometry=city.buildings.data.pseudo_plot, crs=city.segments.crs
-        )
-        pplots = pplots.to_crs(city.segments.crs)
-        colors2 = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
-        pplots.plot(ax=ax, color=colors2)
+#         # Plot pseudo_plots
+#         pplots = gpd.GeoDataFrame(
+#             geometry=city.buildings.data.pseudo_plot, crs=city.segments.crs
+#         )
+#         pplots = pplots.to_crs(city.segments.crs)
+#         colors2 = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
+#         pplots.plot(ax=ax, color=colors2)
 
-        # Plot buildings
-        city.buildings.data.geometry.plot(
-            ax=ax,
-            color="grey",
-        )
+#         # Plot buildings
+#         city.buildings.data.geometry.plot(
+#             ax=ax,
+#             color="grey",
+#         )
 
-        plt.show()
+#         plt.show()

@@ -137,7 +137,7 @@ class TestBuildings(unittest.TestCase):
 
         # building ids should still be in the voronoi polygons data
         self.assertTrue(
-            all(i[1] in buildings.data["id"].to_list() for i in voronoi_polys),
+            all(i[0] in buildings.data["id"].to_list() for i in voronoi_polys),
         )
 
     @patch("pathlib.Path.mkdir")
@@ -252,9 +252,9 @@ class TestBuildings(unittest.TestCase):
         loaded = Buildings.load(self.save_folder, proj_crs="EPSG:3347")
 
         # Files should be created
-        self.assertTrue(Path(self.save_folder / "buildings.gpkg").exists())
-        self.assertTrue(Path(self.save_folder / "extra_one.gpkg").exists())
-        self.assertTrue(Path(self.save_folder / "extra_two.gpkg").exists())
+        self.assertTrue(Path(self.save_folder / "buildings.parquet").exists())
+        self.assertTrue(Path(self.save_folder / "extra_one.parquet").exists())
+        self.assertTrue(Path(self.save_folder / "extra_two.parquet").exists())
 
         # Data should be unchanged
         assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)

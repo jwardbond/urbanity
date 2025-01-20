@@ -23,7 +23,7 @@ class TestDownloadOSMBoundary(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.query = "Little Portugal, Toronto"
 
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.parquet")
         cls.boundarypath.unlink(missing_ok=True)  # delete existing files
 
     def setUp(self) -> None:
@@ -43,7 +43,7 @@ class TestDownloadOSMBoundary(unittest.TestCase):
         self.assertTrue(boundarypath.exists())
 
         # Test that the output and the return value are the same
-        gdf = gpd.read_file(boundarypath)
+        gdf = gpd.read_parquet(boundarypath)
         self.assertEqual(gdf.iloc[0]["geometry"], boundary)
 
         # TODO test crs
@@ -55,9 +55,9 @@ class TestDownloadOSMBoundary(unittest.TestCase):
 class DownloadOSMNetwork(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.parquet")
 
-        cls.networkpath = Path("./tests/test_files/test_files_road_network.gpkg")
+        cls.networkpath = Path("./tests/test_files/test_files_road_network.parquet")
         cls.networkpath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
@@ -97,9 +97,9 @@ class DownloadOSMNetwork(unittest.TestCase):
 class TestDownloadOSMBuildings(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.parquet")
 
-        cls.buildingspath = Path("./tests/test_files/test_files_osm_buildings.gpkg")
+        cls.buildingspath = Path("./tests/test_files/test_files_osm_buildings.parquet")
         cls.buildingspath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
@@ -137,9 +137,9 @@ class TestDownloadOSMBuildings(unittest.TestCase):
 class TestDownloadMSBuildings(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.boundarypath = Path("./tests/test_files/test_files_boundary.gpkg")
+        cls.boundarypath = Path("./tests/test_files/test_files_boundary.parquet")
 
-        cls.buildingspath = Path("./tests/test_files/test_files_ms_buildings.gpkg")
+        cls.buildingspath = Path("./tests/test_files/test_files_ms_buildings.parquet")
         cls.buildingspath.unlink(missing_ok=True)
 
     def setUp(self) -> None:
