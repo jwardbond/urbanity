@@ -322,40 +322,16 @@ class Buildings:
     def save(self, save_folder: pathlib.PurePath) -> None:
         """Saves building data.
 
-        The saves created with this method can be loaded using Buildings.load_from_save.
-        Each column that contains shapely data is saved as a separate file.
-
         Args:
             save_folder (pathlib.PurePath): Save folder location
         """
         save_folder.mkdir(parents=True)
         data = self.data
-
-        # Save any column with shapely data that isn't the "geometry" column
-        geometry_columns = []
-        for c in data.columns:
-            if (
-                isinstance(data[c].iloc[0], shapely.geometry.base.BaseGeometry)
-                and c != "geometry"
-            ):
-                gdf = gpd.GeoDataFrame(
-                    {"id": data["id"], "geometry": data[c]},
-                    crs=data.crs,
-                )
-                utils.save_geodf(gdf, save_folder / c)
-                geometry_columns.append(c)
-
-        # Save all other data
-        utils.save_geodf(
-            data.drop(columns=geometry_columns),
-            save_folder / "buildings",
-        )
+        utils.save_geodf(data, save_folder / "buildings")
 
     @classmethod
     def load(cls, load_folder: pathlib.PurePath, proj_crs: str) -> Self:
         """Constructs a Buildings object from a previous save.
-
-        Calls utils.load_gdf so save file type can be abstracted. Returned object will have EPSG:4326 crs by default.
 
         Args:
             load_folder (pathlib.PurePath): Path to the building save folder

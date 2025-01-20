@@ -28,7 +28,7 @@ def load_geodf(
     if type(x) is str:
         x = pathlib.Path(x)
 
-    x = gpd.read_file(x, engine="pyogrio", use_arrow=True)
+    x = gpd.read_parquet(x)
     x.set_crs("EPSG:4326", allow_override=False)
     if "id" in x:
         x["id"] = x["id"].astype(str).astype(np.int64)  # since id loads as an object
@@ -42,17 +42,18 @@ def save_geodf(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> None:
 
     Saves in EPSG:4326
     """
-    savepath = savepath.with_suffix(".gpkg")
+    savepath = savepath.with_suffix(".parquet")
     i = 0
     while savepath.exists():  # then prompt for overwrite
         i += 1
         savepath = savepath.parent / f"{savepath.stem}_{i}.{savepath.suffix}"
-
     savepath.parent.mkdir(parents=True, exist_ok=True)  # make parent folder
 
     if x.crs != "EPSG:4326":
         x = x.to_crs("EPSG:4326")
-    x.to_file(savepath, driver="GPKG")
+
+    x.to_parquet(savepath, index=False)
+    # x.to_file(savepath, driver="GPKG")
 
 
 def save_geodf_with_prompt(x: gpd.GeoDataFrame, savepath: pathlib.PurePath) -> None:
