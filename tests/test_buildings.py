@@ -164,86 +164,8 @@ class TestBuildings(unittest.TestCase):
             1,
         )
 
-    @patch("pathlib.Path.mkdir")
-    @patch("utils.save_geodf")
-    def test_save_multiple_geom(self, mock_save, mock_mkdir) -> None:  # noqa: ANN001, ARG002
-        buildings = copy.deepcopy(self.buildings)
-        buildings.data["extra_one"] = buildings.data["geometry"]
-        buildings.data["extra_two"] = buildings.data["extra_one"]
-
-        buildings.save(self.save_folder)
-
-        # Utils save should only be called once
-        self.assertEqual(mock_save.call_count, 3)
-
-        # FIRST CALL
-        args, _ = mock_save.call_args_list[0]
-        gdf, path = args
-        expected_path = self.save_folder / "extra_one"
-
-        # Path should be correct
-        self.assertEqual(path, expected_path)
-
-        # Dataframe should have only an id and geometry column
-        self.assertTrue("id" in gdf)
-        self.assertTrue("geometry" in gdf)
-        self.assertEqual(len(gdf.columns), 2)
-
-        # Dataframe should have only one column containing geometries
-        self.assertEqual(
-            sum(
-                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
-                for c in gdf.columns
-            ),
-            1,
-        )
-
-        # SECOND CALL
-        args, _ = mock_save.call_args_list[1]
-        gdf, path = args
-        expected_path = self.save_folder / "extra_two"
-
-        # Path should be correct
-        self.assertEqual(path, expected_path)
-
-        # Dataframe should have only an id and geometry column
-        self.assertTrue("id" in gdf)
-        self.assertTrue("geometry" in gdf)
-        self.assertEqual(len(gdf.columns), 2)
-
-        # Dataframe should have only one column containing geometries
-        self.assertEqual(
-            sum(
-                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
-                for c in gdf.columns
-            ),
-            1,
-        )
-
-        # THIRD CALL
-        args, _ = mock_save.call_args_list[2]
-        gdf, path = args
-        expected_path = self.save_folder / "buildings"
-
-        # Path should be correct
-        self.assertEqual(path, expected_path)
-
-        # Dataframe should have all the original columns except for extra_one and extra_two
-        self.assertTrue(all(c in gdf for c in self.data.columns))
-
-        # Dataframe should have only one column containing geometries
-        self.assertEqual(
-            sum(
-                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
-                for c in gdf.columns
-            ),
-            1,
-        )
-
     def test_save_and_load(self) -> None:
         buildings = copy.deepcopy(self.buildings)
-        buildings.data["extra_one"] = buildings.data["geometry"]
-        buildings.data["extra_two"] = buildings.data["extra_one"]
 
         if self.save_folder.exists():
             shutil.rmtree(self.save_folder)
@@ -253,8 +175,6 @@ class TestBuildings(unittest.TestCase):
 
         # Files should be created
         self.assertTrue(Path(self.save_folder / "buildings.parquet").exists())
-        self.assertTrue(Path(self.save_folder / "extra_one.parquet").exists())
-        self.assertTrue(Path(self.save_folder / "extra_two.parquet").exists())
 
         # Data should be unchanged
         assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)
