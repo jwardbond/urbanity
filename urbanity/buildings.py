@@ -25,53 +25,6 @@ class Buildings:
         self.data = data
         self.proj_crs = proj_crs
 
-    def create_size_flag(
-        self,
-        min_vol: float,
-        max_vol: float,
-        flag_name: str,
-        min_area: float = 0,
-        max_area: float = np.inf,
-    ) -> Self:
-        """Selects buildings within a given volume range.
-
-        Min volume and Max volume should use the same units as your projected CRS
-
-        Args:
-            min_vol (float): Minimum volume for filtering in cubic units
-            max_vol (float): Maximum volume for filtering in cubic units
-            flag_name (str): The name for the building type (e.g. "sfh")
-            min_area: (float): The minimum footprint area for the building type
-            max_area: (float): The maximmum footprint area for the building type
-
-        Returns:
-            object: A copy of the object with an updated `buildings` attribute, containing:
-                - 'volume': Volume per building.
-                - '[flag_name]': Boolean indicating if volume is within range.
-
-        Raises:
-            AttributeError: If there is no height information in the building data
-        """
-        data = self.data
-
-        if "height" not in data:
-            msg = 'building data does not contain a "height" column'
-            raise AttributeError(msg)
-
-        if "volume" not in data:
-            data["volume"] = data["area"] * data["height"]
-
-        # Filtering by size
-        data[flag_name] = data.apply(
-            lambda r: (r.volume >= min_vol)
-            and (r.volume <= max_vol)
-            and (r.area >= min_area)
-            and (r.area <= max_area),
-            axis=1,
-        )
-
-        return Buildings(data, self.proj_crs)
-
     def calc_floors(
         self,
         floor_height: float = 2.75,
@@ -181,7 +134,6 @@ class Buildings:
         data = data.to_crs(self.proj_crs)
 
         # Address df should be in projected crs
-
         if ad_df.crs != self.proj_crs:
             warnings.warn(
                 f"Address crs did not match building projected crs:{self.proj_crs}. Attempting to convert",
@@ -251,18 +203,68 @@ class Buildings:
 
         return Buildings(new_data, self.proj_crs)
 
-    def create_voronoi_plots(
+    def create_size_flag(
+        self,
+        min_vol: float,
+        max_vol: float,
+        flag_name: str,
+        min_area: float = 0,
+        max_area: float = np.inf,
+    ) -> Self:
+        """Selects buildings within a given volume range.
+
+        Min volume and Max volume should use the same units as your projected CRS
+
+        Args:
+            min_vol (float): Minimum volume for filtering in cubic units
+            max_vol (float): Maximum volume for filtering in cubic units
+            flag_name (str): The name for the building type (e.g. "sfh")
+            min_area: (float): The minimum footprint area for the building type
+            max_area: (float): The maximmum footprint area for the building type
+
+        Returns:
+            object: A copy of the object with an updated `buildings` attribute, containing:
+                - 'volume': Volume per building.
+                - '[flag_name]': Boolean indicating if volume is within range.
+
+        Raises:
+            AttributeError: If there is no height information in the building data
+        """
+        data = self.data
+
+        if "height" not in data:
+            msg = 'building data does not contain a "height" column'
+            raise AttributeError(msg)
+
+        if "volume" not in data:
+            data["volume"] = data["area"] * data["height"]
+
+        # Filtering by size
+        data[flag_name] = data.apply(
+            lambda r: (r.volume >= min_vol)
+            and (r.volume <= max_vol)
+            and (r.area >= min_area)
+            and (r.area <= max_area),
+            axis=1,
+        )
+
+        return Buildings(data, self.proj_crs)
+
+    def create_voronoi_polygons(
         self,
         boundary: shapely.Polygon = None,
+        debuff: float | None = 0.5,
         flag_col: str | None = None,
         shrink: bool = True,
-        building_rep: str = "mrr",
+        building_rep: str = "geometry",
     ) -> list[tuple[2]]:
         """Make sure the boundary is the same crs as buildings.proj_crs!.
 
         Args:
             boundary (shapely Polygon, optional): The boundary within which the voronoi polygons will be generated.
                 Defaults to None (Uses the convex hull of all buildings).
+            debuff (float, optional): Shrinks buildings by debuff amount. Recommended when buildings are touching.
+                Defaults to 0.5.
             flag_col (str, optional): If set, buildings without the flag will be excluded when generating voronoi polygons.
                 Defaults to None.
             shrink (bool, optional): If True, shrinks the boundary to approximate a convex hull around the contained buildings.
@@ -282,21 +284,27 @@ class Buildings:
             boundary = buildings["geometry"].unary_union.convex_hull
 
         # Get all buildings within the boundary
-        buildings = buildings[
-            buildings["geometry"].intersects(boundary, align=False)
-        ]  # HACK
+        buildings = buildings[buildings["geometry"].intersects(boundary, align=False)]
 
         if len(buildings) == 0:
             return (np.nan, np.nan)
+
+        # Shrink buildings a little unless otherwise specified.
+        # Avoids voronoi problems with overlapping/touching buildings.
+        if debuff:
+            buildings["geometry"] = buildings["geometry"].buffer(
+                -debuff,
+                join_style="mitre",
+            )
 
         if flag_col:
             buildings = buildings[buildings[flag_col]].copy()
 
         # Simplify buildings
-        if building_rep == "mrr":
+        if building_rep == "geometry":
+            pass
+        elif building_rep == "mrr":
             buildings["geometry"] = buildings["geometry"].minimum_rotated_rectangle()
-        elif building_rep == "geometry":
-            pass  # TODO
         else:
             msg = f"building_rep={building_rep} is not supported"
             raise AttributeError(msg)
@@ -313,7 +321,6 @@ class Buildings:
         vd = vd.to_crs(original_crs)
         vd = vd[["id", "geometry"]]
         vd = list(vd.itertuples(index=False, name=None))
-
         return vd
 
     #

@@ -6,17 +6,42 @@ updated on 2024/12/09. Updated from source 2024/12/09.
 
 import itertools
 import math
+import warnings
 
 import geopandas as gpd
 import numpy as np
-import shapely
-import time
 from shapely.geometry import MultiPolygon, Polygon
-from shapely.ops import voronoi_diagram as svd
+from shapely.ops import unary_union, voronoi_diagram
+
+warnings.filterwarnings(
+    action="ignore",
+    message="The weights matrix is not fully connected",
+    module="libpysal",
+)
 
 
-def minimum_distance(gdf: gpd.GeoDataFrame) -> float:
-    """Calculate the minimum distance of all vertices of input geometries.
+def valid_comparisons(pdict: dict) -> list[list[tuple]]:
+    """Given a dict, whose values are lists of polygon vertices, return cartesian product of every vertex from each polygon with every *other* polygon.
+
+    Used to avoid cartesian products containing point combinations from within the same polygon
+
+    Args:
+        pdict (dict): a dict whose keys are polygon id numbers, and whose values are lists of tuples of polygon vertices
+            e.g. [(x0, y0), (x1, y1)...].
+
+    Returns:
+        [(p1, p2), (p1, p3)...]: the cartesian product of every point from a polygon with every other point from other polygons.
+    """
+    result = []
+    for key, tuples in pdict.items():
+        other_tuples = [t for k, v in pdict.items() if k != key for t in v]
+        pairs = list(itertools.product(tuples, other_tuples))
+        result += pairs
+    return result
+
+
+def minimum_distance(gdf: gpd.GeoDataFrame) -> float | None:
+    """Calculate the minimum distance between vertices of DIFFERENT geometries.
 
     Args:
         gdf (geopandas.GeoDataFrame): Polygons to be used.
@@ -24,22 +49,22 @@ def minimum_distance(gdf: gpd.GeoDataFrame) -> float:
     Returns:
         float: The minimum distance.
     """
-    smp = gdf.unary_union  # convert to shapely.geometry.MultiPolygon
-    vertices = []
+    if len(gdf) == 1:
+        return None
 
-    if isinstance(smp, shapely.Polygon):
-        coords = np.dstack(smp.exterior.coords.xy).tolist()[0]
-        vertices.extend(coords)
-    else:
-        for g in smp.geoms:
-            coords = np.dstack(g.exterior.coords.xy).tolist()[0]
-            vertices.extend(coords)
-    potentials = list(itertools.combinations(vertices, 2))  # pairs of vertices
-    all_distance = [
-        math.sqrt((pp[0][0] - pp[1][0]) ** 2 + (pp[0][1] - pp[1][1]) ** 2)
-        for pp in potentials
+    # Convert to dict of poly: [(x1,y1)...] tuples
+    polys = gdf.geometry.tolist()
+    polys = {i: v.exterior.coords.xy for i, v in enumerate(polys)}
+    polys = {k: list(zip(v[0], v[1], strict=True)) for k, v in polys.items()}
+
+    # Generate valid comparisons
+    comparisons = valid_comparisons(polys)
+
+    # Calculate distances
+    distances = [
+        math.dist(p0, p1) for (p0, p1) in comparisons
     ]  # calculate distance for each pair of vertices
-    nonzero_distance = [d for d in all_distance if d > 0.0]  # drop zeros
+    nonzero_distance = [d for d in distances if d > 0.0]  # drop zeros
     return min(nonzero_distance)
 
 
@@ -101,24 +126,31 @@ def densify_polygon(gdf: gpd.GeoDataFrame, spacing="auto") -> gpd.GeoDataFrame: 
     gdf["geometry"] = ext_list.map(
         lambda x: Polygon(_pnts_on_line_(np.array(list(x)), spacing=spacing))
     )
-    # ext_list = (
-    #     gdf["geometry"]
-    #     .swifter.progress_bar(False)
-    #     .apply(lambda g: list(g.exterior.coords))
-    # )
-
-    # # Add points to boundary of polygon
-    # gdf["geometry"] = ext_list.swifter.progress_bar(False).apply(
-    #     lambda x: Polygon(_pnts_on_line_(np.array(list(x)), spacing=spacing))
-    # )
-
-    # Drop the temp exterior point column
     return gdf
+
+
+def simplify_polygon(
+    geom: Polygon | MultiPolygon,
+) -> Polygon | None:
+    """Converts geometry to exterior polygon without holes.
+
+    Will also transform multipolygons into polygons via exterior points
+
+    """
+    if isinstance(geom, MultiPolygon):
+        # Convert each polygon in the multipolygon
+        polys = [Polygon(p.exterior).buffer(0.01) for p in geom.geoms]
+        polys = unary_union(polys).buffer(-0.01)
+        return polys
+    elif isinstance(geom, Polygon):
+        return Polygon(geom.exterior)
+    return None
 
 
 def voronoiDiagram4plg(  # noqa: N802
     gdf: gpd.GeoDataFrame,
     mask,  # noqa: ANN001
+    debuff: float | None = None,
     densify: bool = False,
     spacing="auto",  # noqa: ANN001
 ) -> gpd.GeoDataFrame:
@@ -136,17 +168,17 @@ def voronoiDiagram4plg(  # noqa: N802
         geopandas.GeoDataFrame: Thiessen polygons.
     """
     gdf = gdf.copy()
-    if densify:
+
+    if densify & (len(gdf) > 1):
         gdf = densify_polygon(gdf, spacing=spacing)
+
     gdf.reset_index(drop=True)
 
-    # convert to shapely.geometry.MultiPolygon
+    # convert to MultiPolygon
     smp = gdf.unary_union
 
     # create primary voronoi diagram by invoking shapely.ops.voronoi_diagram (new in Shapely 1.8.dev0)
-    s1 = time.time()
-    smp_vd = svd(smp)
-    e1 = time.time()
+    smp_vd = voronoi_diagram(smp)
 
     # convert to GeoSeries and explode to single polygons
     # note that it is NOT supported to GeoDataFrame directly
@@ -156,7 +188,7 @@ def voronoiDiagram4plg(  # noqa: N802
     gs.loc[~gs.is_valid] = gs.loc[~gs.is_valid].apply(lambda geom: geom.buffer(0))
 
     # convert to GeoDataFrame
-    # note that if gdf was shapely.geometry.MultiPolygon, it has no attribute 'crs'
+    # note that if gdf was MultiPolygon, it has no attribute 'crs'
     gdf_vd_primary = gpd.geodataframe.GeoDataFrame(
         geometry=gs,
         crs=gdf.crs,
@@ -164,13 +196,6 @@ def voronoiDiagram4plg(  # noqa: N802
 
     # spatial join by intersecting and dissolve by polygon id
     gdf_vd_primary["saved_geom"] = gdf_vd_primary["geometry"]
-    # gdf_temp = (
-    #     gpd.sjoin(gdf_vd_primary, gdf, how="inner", predicate="intersects")
-    #     .dissolve(by="index_right")
-    #     .reset_index(drop=True)
-    # )
-
-    # print(gdf_temp)
 
     gdf_temp = gpd.sjoin(gdf, gdf_vd_primary, how="inner", predicate="intersects")
     gdf_temp["geometry"] = gdf_temp["saved_geom"]
@@ -178,27 +203,6 @@ def voronoiDiagram4plg(  # noqa: N802
     gdf_temp = gdf_temp.dissolve(by="id").reset_index()
 
     gdf_vd = gpd.clip(gdf_temp, mask)
-    gdf_vd["geometry"] = gdf_vd["geometry"].map(dropHoles)
+    gdf_vd["geometry"] = gdf_vd["geometry"].map(simplify_polygon)
 
     return gdf_vd
-
-
-def dropHoles(  # noqa: N802
-    plg: (shapely.geometry.MultiPolygon | shapely.geometry.Polygon),
-) -> shapely.geometry.MultiPolygon | shapely.geometry.Polygon:
-    """Basic function to remove / drop / fill the holes.
-
-    Args:
-        plg (shapely.geometry.MultiPolygon or shapely.geometry.Polygon): Polygon with holes.
-
-    Returns:
-        shapely.geometry.MultiPolygon or shapely.geometry.Polygon: Polygon without holes.
-    """
-    if isinstance(plg, MultiPolygon):
-        if shapely.__version__ < "2.0":
-            return MultiPolygon(Polygon(p.exterior) for p in plg)
-        return MultiPolygon(Polygon(p.exterior) for p in plg.geoms)
-
-    if isinstance(plg, Polygon):
-        return Polygon(plg.exterior)
-    return None

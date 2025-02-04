@@ -118,10 +118,10 @@ class TestBuildings(unittest.TestCase):
         self.assertEqual(buildings.data.iloc[2]["floors"], 2)
         self.assertEqual(buildings.data.iloc[3]["floors"], 3)
 
-    def test_get_voronoi_plots(self) -> None:
+    def test_create_voronoi_polygons(self) -> None:
         buildings = self.buildings
 
-        voronoi_polys = buildings.create_voronoi_plots(
+        voronoi_polys = buildings.create_voronoi_polygons(
             boundary=None,
             flag_col=None,
             shrink=False,
