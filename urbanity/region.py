@@ -12,6 +12,7 @@ from genregion import generate_regions
 import utils
 
 from .buildings import Buildings
+from .plots import Plots
 
 # TODO add saving
 # TODO add adjacency attribute
@@ -38,6 +39,7 @@ class Region:
         proj_crs: str,
         road_network: gpd.GeoDataFrame = None,
         buildings: Buildings = None,
+        plots: Plots = None,
     ):
         if "area" not in segments:
             segments["area"] = segments.to_crs(proj_crs)["geometry"].area
@@ -51,8 +53,10 @@ class Region:
 
         self.proj_crs = proj_crs
         self.segments = segments
+
         self.road_network = road_network
-        self.buildings = buildings  # property w _buildings
+        self.buildings = buildings  # property w. _buildings
+        self.plots = plots  # property w. _plots
 
     @property
     def buildings(self) -> Buildings:
@@ -75,6 +79,28 @@ class Region:
 
             self._buildings = obj
             self._buildings.proj_crs = self.proj_crs
+
+    @property
+    def plots(self) -> Plots:
+        if self._plots is None:
+            msg = "Plots data has not been set"
+            raise AttributeError(msg)
+        return self._plots
+
+    @plots.setter
+    def plots(self, obj: Plots):
+        if obj is None:
+            self._plots = None
+        else:
+            if type(obj) is not Plots:
+                msg = "value must be a Plots object"
+                raise TypeError(msg)
+            if obj.data.crs != "EPSG:4326":
+                msg = "Plots data must be in EPSG:4326"
+                raise ValueError(msg)
+
+            self._plots = obj
+            self._plots.proj_crs = self.proj_crs
 
     #
     # CONSTRUCTORS
@@ -195,6 +221,12 @@ class Region:
             buildings = Buildings.load(load_folder / "buildings", proj_crs)
         else:
             buildings = None
+
+        # Load plots
+        if (load_folder / "plots").exists():
+            plots = Plots.load(load_folder / "plots", proj_crs)
+        else:
+            plots = None
 
         return Region(
             segments=segments,
@@ -481,7 +513,7 @@ class Region:
         progress_bar: bool = False,
         **kwargs,
     ) -> Self:
-        """TODO.
+        """#TODO.
 
         Args:
             segment_flag (str, optional): Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
@@ -505,31 +537,37 @@ class Region:
         # note that this is done in the buildings' proj_crs
         # (which should be the regions proj_crs as well)
         def vpoly_apply(boundary: shapely.Polygon) -> list[tuple]:
-            polys = buildings.create_voronoi_plots(boundary=boundary, **kwargs)
+            polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
             return polys
 
-        segments["voronoi_polys"] = (
-            segments["geometry"]
-            .to_crs(buildings.proj_crs)
-            # .swifter.progress_bar(progress_bar)
-            .apply(vpoly_apply)
-        )
+        if progress_bar:
+            segments["voronoi_polys"] = (
+                segments["geometry"]
+                .to_crs(buildings.proj_crs)
+                .swifter.apply(vpoly_apply)
+            )
+        else:
+            segments["voronoi_polys"] = (
+                segments["geometry"]
+                .to_crs(buildings.proj_crs)
+                .swifter.progress_bar(False)
+                .apply(vpoly_apply)
+            )
 
         # Extract the voronoi polygons and associated building ids
         # by exploding and converting tuples to new columns (in a new df)
         exploded = segments.explode("voronoi_polys")
 
-        voronoi_df = pd.DataFrame(
+        voronoi_df = gpd.GeoDataFrame(
             exploded["voronoi_polys"].tolist(),
-            columns=["id", "pseudo_plot"],
-        )
-
-        buildings.data = buildings.data.merge(voronoi_df, how="left", on="id")
+            columns=["id", "geometry"],
+        ).set_crs(buildings.data.crs)
 
         return Region(
             segments=self.segments,
             proj_crs=self.proj_crs,
             buildings=Buildings(buildings.data, self.proj_crs),
+            plots=Plots(voronoi_df, self.proj_crs),
         )
 
     #
@@ -563,6 +601,9 @@ class Region:
         bl = bl and self.proj_crs == other.proj_crs
 
         if self._buildings:
-            bl = bl and other._buildings and self.buildings == other.buildings
+            bl = bl and other._buildings and self._buildings == other._buildings
+
+        if self._plots:
+            bl = bl and other._plots and self._plots == other._plots
 
         return bl

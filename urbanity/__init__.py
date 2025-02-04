@@ -9,4 +9,5 @@ os.environ["GDAL_DATA"] = os.path.join(
 )  # HACK GDAL warning suppression
 
 from .buildings import Buildings
+from .plots import Plots
 from .region import Region
