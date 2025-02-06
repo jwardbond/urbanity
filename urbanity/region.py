@@ -515,6 +515,7 @@ class Region:
     @staticmethod
     def gen_vpolys(boundary: shapely.Polygon, buildings, **kwargs) -> list[tuple]:
         polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
+        polys = polys["geometry"].to_list()
         return polys
 
     def add_pseudo_plots(
@@ -545,27 +546,28 @@ class Region:
         gp = GeoParallel()
         gen_vpolys = partial(self.gen_vpolys, buildings=buildings, **kwargs)
 
-        segments["voronoi_polys"] = gp.apply_chunked(
+        plots = gp.apply_chunked(
             segments["geometry"].to_crs(buildings.proj_crs),
             gen_vpolys,
         )
 
-        # segments["voronoi_polys"] = (
+        # plots = (
         #     segments["geometry"].to_crs(buildings.proj_crs).apply(gen_vpolys)
         # )
 
-        # Extract the voronoi polygons and associated building ids
-        # by exploding and converting tuples to new columns (in a new df)
-        exploded = segments.explode("voronoi_polys")
-        exploded = exploded[exploded["geometry"].notna()]
-
-        voronoi_df = exploded[["id", "geometry"]].set_crs(buildings.data.crs)
+        plots = plots.explode().reset_index(drop=True)
+        plots = plots[plots.notna()]
+        plots = gpd.GeoDataFrame(
+            data={"id": plots.index},
+            geometry=plots,
+            crs=buildings.data.crs,
+        )
 
         return Region(
             segments=self.segments,
             proj_crs=self.proj_crs,
             buildings=Buildings(buildings.data, self.proj_crs),
-            plots=Plots(voronoi_df, self.proj_crs),
+            plots=Plots(plots, self.proj_crs),
         )
 
     #
