@@ -2,15 +2,60 @@ import unittest
 import warnings
 
 import geopandas as gpd
+import numpy as np
 import shapely
 from matplotlib import pyplot as plt
 
-from urbanity.polyronoi.longsgis import minimum_distance, valid_comparisons
+from urbanity.polyronoi.longsgis import (
+    minimum_distance,
+    valid_comparisons,
+    voronoiDiagram4plg,
+)
+
+
+class TestVoronoiDiagram4Plg(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+        # Create sample polygons for testing
+        p1 = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
+        p2 = shapely.Polygon([(2, 0), (3, 0), (3, 1), (2, 1)])
+        self.gdf = gpd.GeoDataFrame(geometry=[p1, p2], crs="EPSG:3347")
+        self.mask = shapely.Polygon([(-1, -1), (4, -1), (4, 2), (-1, 2)])
+
+    def test_voronoi_with_densification(self):
+        result = voronoiDiagram4plg(self.gdf, self.mask, densify=True)
+        fig, ax = plt.subplots()
+        result.plot(ax=ax)
+        self.gdf.plot(ax=ax, color="red")
+        plt.show()
+
+        self.assertIsInstance(result, gpd.GeoDataFrame)
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(result.geometry.is_valid))
+
+    def test_voronoi_vertex_limit_exceeded(self):
+        # Create polygon with many vertices
+        coords = [(x / 1000, np.sin(x / 1000)) for x in range(501000)]
+        poly = shapely.Polygon(coords)
+        gdf_large = gpd.GeoDataFrame(geometry=[poly])
+
+        result = voronoiDiagram4plg(gdf_large, self.mask)
+        self.assertTrue(all(result.geometry.isna()))
+
+    def test_voronoi_single_polygon(self):
+        single_gdf = gpd.GeoDataFrame(
+            geometry=[self.gdf.iloc[0].geometry],
+            crs="EPSG:3347",
+        )
+        result = voronoiDiagram4plg(single_gdf, self.mask, densify=False)
+        self.assertIsInstance(result, gpd.GeoDataFrame)
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result.geometry.iloc[0].is_valid)
 
 
 class TestMinimumDistance(unittest.TestCase):
     def setUp(self):
-        warnings.filterwarnings("ignore", category=UserWarning)
+        warnings.simplefilter("ignore", category=DeprecationWarning)
 
     def test_one_poly(self):
         polygons = gpd.GeoDataFrame(
@@ -42,6 +87,9 @@ class TestMinimumDistance(unittest.TestCase):
 
 
 class TestValidComparisons(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+
     def test_empty_dict(self):
         empty_dict = {}
         result = valid_comparisons(empty_dict)
