@@ -47,7 +47,7 @@ class TestGeoParallel(unittest.TestCase):
 
     def test_geoparallel_apply_chunked(self):
         gp = GeoParallel(n_jobs=2)
-        result = gp.apply_chunked(self.test_gs, double_x_coordinate, chunk_size=3)
+        result = gp.apply_chunked(self.test_gs, double_x_coordinate, num_chunks=3)
         expected = self.test_gs.map(double_x_coordinate)
 
         pd.testing.assert_series_equal(result, expected, check_dtype=False)
@@ -66,7 +66,7 @@ class TestGeoParallel(unittest.TestCase):
 
     def test_geoparallel_apply_chunked_with_tuples(self):
         gp = GeoParallel(n_jobs=2)
-        result = gp.apply_chunked(self.test_gs, create_tuple_output, chunk_size=3)
+        result = gp.apply_chunked(self.test_gs, create_tuple_output, num_chunks=3)
 
         # Check result structure
         self.assertTrue(all(isinstance(x, tuple) for x in result))

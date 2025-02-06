@@ -30,13 +30,12 @@ class GeoParallel:
         self,
         gs: gpd.GeoSeries,
         func: callable,
-        chunk_size: int = 1000,
+        num_chunks: int | None = None,
         desc="Chunked apply",
     ) -> gpd.GeoSeries:
-        chunks = [
-            gs.loc[idx]
-            for idx in np.array_split(gs.index, max(1, len(gs) // chunk_size))
-        ]
+        if num_chunks is None:
+            num_chunks = self.n_jobs
+        chunks = [gs.loc[idx] for idx in np.array_split(gs.index, max(1, num_chunks))]
 
         wrapped_func = partial(self._mapped_func_wrapper, func=func)
         results = self._parallelize(chunks, wrapped_func, desc)
