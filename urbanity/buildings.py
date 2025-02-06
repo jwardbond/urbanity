@@ -272,7 +272,7 @@ class Buildings:
             geom_style (str, optional): Passed to simplify_buildings before voronoi generation.
 
         Returns:
-            A list of (geometry, building_id) tuples representing the voronoi polygons for each building.
+            gpd.GeoDataFrame: A gdf containing [building id, voronoi geometry] columns
         """
         buildings = self.data[["id", "geometry"]]
         original_crs = buildings.crs
@@ -325,7 +325,6 @@ class Buildings:
         vd = voronoiDiagram4plg(buildings, boundary, densify=True)
         vd = vd.to_crs(original_crs)
         vd = vd[["id", "geometry"]]
-        vd = list(vd.itertuples(index=False, name=None))
 
         return vd
 

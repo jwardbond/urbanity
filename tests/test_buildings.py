@@ -129,16 +129,19 @@ class TestBuildings(unittest.TestCase):
             geom_style="mrr",
         )
 
-        # Return type should be list of tuples
-        self.assertIsInstance(voronoi_polys, list)
-        self.assertIsInstance(voronoi_polys[0], tuple)
+        # Return type should be a gdf with two columns
+        self.assertIsInstance(voronoi_polys, gpd.GeoDataFrame)
+        self.assertIn("id", voronoi_polys)
+        self.assertIn("geometry", voronoi_polys)
+        self.assertEqual(len(voronoi_polys.columns), 2)
+        self.assertIsInstance(voronoi_polys["geometry"].iloc[0], shapely.Polygon)
 
         # lengths should be the same
         self.assertEqual(len(buildings.data), len(voronoi_polys))
 
         # building ids should still be in the voronoi polygons data
         self.assertTrue(
-            all(i[0] in buildings.data["id"].to_list() for i in voronoi_polys),
+            all(i in buildings.data["id"].to_list() for i in voronoi_polys["id"]),
         )
 
     @patch("pathlib.Path.mkdir")
