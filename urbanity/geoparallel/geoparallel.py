@@ -13,6 +13,10 @@ class GeoParallel:
         self.n_jobs = n_jobs if n_jobs else multiprocessing.cpu_count() - 1
         self.prog_bar = prog_bar
 
+    @staticmethod
+    def _mapped_func_wrapper(item: gpd.GeoSeries, func: callable):
+        return item.map(func)
+
     def apply(
         self,
         gs: gpd.GeoSeries,
@@ -20,11 +24,7 @@ class GeoParallel:
         desc: str = "Parallel apply",
     ) -> gpd.GeoSeries:
         results = self._parallelize(gs, func, desc)
-        return gpd.GeoSeries(results)
-
-    @staticmethod
-    def _mapped_func_wrapper(item: gpd.GeoSeries, func: callable):
-        return item.map(func)
+        return pd.Series(results)
 
     def apply_chunked(
         self,
@@ -39,9 +39,8 @@ class GeoParallel:
         ]
 
         wrapped_func = partial(self._mapped_func_wrapper, func=func)
-
         results = self._parallelize(chunks, wrapped_func, desc)
-        return gpd.GeoSeries(pd.concat(results, ignore_index=True))
+        return pd.concat(results, ignore_index=True)
 
     def _parallelize(self, items, func, desc) -> list:
         """Parallelizes func over items.
@@ -56,24 +55,7 @@ class GeoParallel:
         """
         with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
             if self.prog_bar:
-                result = list(
-                    tqdm(executor.map(func, items), total=len(items), desc=desc),
-                )
-                return result
-            return list(executor.map(func, items))
-
-            # future_to_index = {
-            #     executor.submit(func, item): i for i, item in enumerate(items)
-            # }
-
-            # if self.prog_bar:
-            #     with tqdm(total=total, desc=desc) as pbar:
-            #         for future in as_completed(future_to_index):
-            #             results.append((future_to_index[future], future.result()))
-            #             pbar.update(1)
-            # else:
-            #     for future in as_completed(future_to_index):
-            #         results.append((future_to_index[future], future.result()))
-
-            # results = sorted(results, key=lambda x: x[0])
-            # return [r[1] for r in results]
+                result = tqdm(executor.map(func, items), total=len(items), desc=desc)
+            else:
+                result = executor.map(func, items)
+            return list(result)
