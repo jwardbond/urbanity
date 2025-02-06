@@ -5,11 +5,15 @@ updated on 2024/12/09. Updated from source 2024/12/09.
 """
 
 import itertools
+import logging
 import math
+import os
+import time
 import warnings
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union, voronoi_diagram
 
@@ -18,6 +22,15 @@ warnings.filterwarnings(
     message="The weights matrix is not fully connected",
     module="libpysal",
 )
+
+
+def setup_logger():
+    log_file = f"worker_{os.getpid()}.log"  # Each worker gets a separate log file
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format="%(asctime)s [PID %(process)d] %(levelname)s: %(message)s",
+    )
 
 
 def valid_comparisons(pdict: dict) -> list[list[tuple]]:
@@ -147,6 +160,13 @@ def simplify_polygon(
     return None
 
 
+def vertex_count_in_limit(smp: MultiPolygon, max_vertices: int) -> bool:
+    polygons = list(smp.geoms) if isinstance(smp, MultiPolygon) else [smp]
+    vertex_count = sum(len(poly.exterior.coords) for poly in polygons)
+    logging.info(f"Processing {vertex_count} vertices")
+    return vertex_count <= max_vertices
+
+
 def voronoiDiagram4plg(  # noqa: N802
     gdf: gpd.GeoDataFrame,
     mask,  # noqa: ANN001
@@ -168,6 +188,7 @@ def voronoiDiagram4plg(  # noqa: N802
         geopandas.GeoDataFrame: Thiessen polygons.
     """
     gdf = gdf.copy()
+    setup_logger()
 
     if densify & (len(gdf) > 1):
         gdf = densify_polygon(gdf, spacing=spacing)
@@ -177,8 +198,20 @@ def voronoiDiagram4plg(  # noqa: N802
     # convert to MultiPolygon
     smp = gdf.unary_union
 
+    # test for overly large inputs
+    if not vertex_count_in_limit(smp, 500000):
+        warnings.warn(
+            "More than 500 000 vertices detected. Voronoi generation not performed",
+            stacklevel=2,
+        )
+        gdf.geometry = [pd.NA] * len(gdf)
+        logging.info("\tCanceled")
+        return gdf
+
     # create primary voronoi diagram by invoking shapely.ops.voronoi_diagram (new in Shapely 1.8.dev0)
+    start = time.time()
     smp_vd = voronoi_diagram(smp)
+    logging.info(f"\tVoronoi done {time.time() - start}")
 
     # convert to GeoSeries and explode to single polygons
     # note that it is NOT supported to GeoDataFrame directly
@@ -200,7 +233,10 @@ def voronoiDiagram4plg(  # noqa: N802
     gdf_temp = gpd.sjoin(gdf, gdf_vd_primary, how="inner", predicate="intersects")
     gdf_temp["geometry"] = gdf_temp["saved_geom"]
     gdf_temp = gdf_temp.drop(columns=["saved_geom", "index_right"])
-    gdf_temp = gdf_temp.dissolve(by="id").reset_index()
+
+    start = time.time()
+    gdf_temp = gdf_temp.dissolve(level=0).reset_index()
+    logging.info(f"\tDissolve done {time.time() - start}")
 
     gdf_vd = gpd.clip(gdf_temp, mask)
     gdf_vd["geometry"] = gdf_vd["geometry"].map(simplify_polygon)

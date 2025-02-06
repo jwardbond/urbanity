@@ -19,15 +19,15 @@ class TestVoronoiDiagram4Plg(unittest.TestCase):
         # Create sample polygons for testing
         p1 = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
         p2 = shapely.Polygon([(2, 0), (3, 0), (3, 1), (2, 1)])
-        self.gdf = gpd.GeoDataFrame(geometry=[p1, p2], crs="EPSG:3347")
+        self.gdf = gpd.GeoDataFrame(
+            data={"id": [0, 1]},
+            geometry=[p1, p2],
+            crs="EPSG:3347",
+        )
         self.mask = shapely.Polygon([(-1, -1), (4, -1), (4, 2), (-1, 2)])
 
     def test_voronoi_with_densification(self):
         result = voronoiDiagram4plg(self.gdf, self.mask, densify=True)
-        fig, ax = plt.subplots()
-        result.plot(ax=ax)
-        self.gdf.plot(ax=ax, color="red")
-        plt.show()
 
         self.assertIsInstance(result, gpd.GeoDataFrame)
         self.assertEqual(len(result), 2)
@@ -39,7 +39,9 @@ class TestVoronoiDiagram4Plg(unittest.TestCase):
         poly = shapely.Polygon(coords)
         gdf_large = gpd.GeoDataFrame(geometry=[poly])
 
-        result = voronoiDiagram4plg(gdf_large, self.mask)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            result = voronoiDiagram4plg(gdf_large, self.mask)
         self.assertTrue(all(result.geometry.isna()))
 
     def test_voronoi_single_polygon(self):
