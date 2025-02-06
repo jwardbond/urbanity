@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import geopandas as gpd
+import pandas as pd
 import shapely
 from geopandas.testing import assert_geodataframe_equal, assert_geoseries_equal
 
@@ -126,7 +127,7 @@ class TestBuildings(unittest.TestCase):
             boundary=None,
             flag_col=None,
             shrink=False,
-            geom_style="mrr",
+            geom_style=None,
         )
 
         # Return type should be a gdf with two columns
@@ -143,6 +144,29 @@ class TestBuildings(unittest.TestCase):
         self.assertTrue(
             all(i in buildings.data["id"].to_list() for i in voronoi_polys["id"]),
         )
+
+    def test_create_voronoi_polygons_no_buildings(self):
+        buildings = gpd.GeoDataFrame(
+            data={"id": [pd.NA]},
+            geometry=[pd.NA],
+            crs="EPSG:4326",
+        )
+        buildings = Buildings(buildings, "EPSG:3347")
+
+        voronoi_polys = buildings.create_voronoi_polygons(
+            boundary=shapely.Polygon([(0, 0), (5, 0), (5, 10), (0, 10)]),
+            flag_col=None,
+            shrink=False,
+            geom_style=None,
+        )
+
+        self.assertIsInstance(voronoi_polys, gpd.GeoDataFrame)
+        self.assertIn("id", voronoi_polys)
+        self.assertIn("geometry", voronoi_polys)
+        self.assertEqual(len(voronoi_polys.columns), 2)
+
+        self.assertEqual(len(voronoi_polys), 1)
+        self.assertEqual(sum(voronoi_polys["geometry"].notna()), 0)
 
     @patch("pathlib.Path.mkdir")
     @patch("utils.save_geodf")

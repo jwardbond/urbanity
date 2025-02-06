@@ -285,7 +285,7 @@ class Buildings:
         buildings = buildings[buildings["geometry"].intersects(boundary, align=False)]
 
         if len(buildings) == 0:
-            return (np.nan, np.nan)
+            return gpd.GeoDataFrame(data={"id": [pd.NA]}, geometry=[pd.NA])
 
         if "Multipolygon" in buildings.geometry.geom_type.unique():
             warnings.warn(
