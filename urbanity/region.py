@@ -1,18 +1,19 @@
 import copy
 from pathlib import PurePath
 from typing import Self
+from functools import partial
 
 import geopandas as gpd
 import pandas as pd
 import shapely
 import shapely.ops
-import swifter
 from genregion import generate_regions
 
 import utils
 
 from .buildings import Buildings
 from .plots import Plots
+from .geoparallel import GeoParallel
 
 # TODO add saving
 # TODO add adjacency attribute
@@ -233,6 +234,7 @@ class Region:
             proj_crs=proj_crs,
             road_network=road_network,
             buildings=buildings,
+            plots=plots,
         )
 
     @classmethod
@@ -507,10 +509,17 @@ class Region:
             buildings=self._buildings,
         )
 
+    # Generate list of voronoi polygons for each segment
+    # note that this is done in the buildings' proj_crs
+    # (which should be the regions proj_crs as well)
+    @staticmethod
+    def gen_vpolys(boundary: shapely.Polygon, buildings, **kwargs) -> list[tuple]:
+        polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
+        return polys
+
     def add_pseudo_plots(
         self,
         segment_flag: str = "",
-        progress_bar: bool = False,
         **kwargs,
     ) -> Self:
         """#TODO.
@@ -533,35 +542,24 @@ class Region:
         )
         segments = segments.copy()
 
-        # Generate list of voronoi polygons for each segment
-        # note that this is done in the buildings' proj_crs
-        # (which should be the regions proj_crs as well)
-        def vpoly_apply(boundary: shapely.Polygon) -> list[tuple]:
-            polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
-            return polys
+        gp = GeoParallel()
+        gen_vpolys = partial(self.gen_vpolys, buildings=buildings, **kwargs)
 
-        if progress_bar:
-            segments["voronoi_polys"] = (
-                segments["geometry"]
-                .to_crs(buildings.proj_crs)
-                .swifter.apply(vpoly_apply)
-            )
-        else:
-            segments["voronoi_polys"] = (
-                segments["geometry"]
-                .to_crs(buildings.proj_crs)
-                .swifter.progress_bar(False)
-                .apply(vpoly_apply)
-            )
+        segments["voronoi_polys"] = gp.apply_chunked(
+            segments["geometry"].to_crs(buildings.proj_crs),
+            gen_vpolys,
+        )
+
+        # segments["voronoi_polys"] = (
+        #     segments["geometry"].to_crs(buildings.proj_crs).apply(gen_vpolys)
+        # )
 
         # Extract the voronoi polygons and associated building ids
         # by exploding and converting tuples to new columns (in a new df)
         exploded = segments.explode("voronoi_polys")
+        exploded = exploded[exploded["geometry"].notna()]
 
-        voronoi_df = gpd.GeoDataFrame(
-            exploded["voronoi_polys"].tolist(),
-            columns=["id", "geometry"],
-        ).set_crs(buildings.data.crs)
+        voronoi_df = exploded[["id", "geometry"]].set_crs(buildings.data.crs)
 
         return Region(
             segments=self.segments,
@@ -595,6 +593,8 @@ class Region:
             utils.save_geodf(self.road_network, save_folder / "road_network")
         if self.buildings is not None:
             self.buildings.save(save_folder / "buildings")
+        if self.plots is not None:
+            self.plots.save(save_folder / "plots")
 
     def __eq__(self, other: Self) -> bool:
         bl = self.segments.equals(other.segments)
