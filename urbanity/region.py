@@ -62,7 +62,7 @@ class Region:
     @property
     def buildings(self) -> Buildings:
         if self._buildings is None:
-            msg = "Buildings data has not been set"
+            msg = "Buildings data has not been set."
             raise AttributeError(msg)
         return self._buildings
 
@@ -84,7 +84,7 @@ class Region:
     @property
     def plots(self) -> Plots:
         if self._plots is None:
-            msg = "Plots data has not been set"
+            msg = "Plots data has not been set."
             raise AttributeError(msg)
         return self._plots
 
@@ -591,9 +591,9 @@ class Region:
 
         if self.road_network is not None:
             utils.save_geodf(self.road_network, save_folder / "road_network")
-        if self.buildings is not None:
+        if self._buildings is not None:
             self.buildings.save(save_folder / "buildings")
-        if self.plots is not None:
+        if self._plots is not None:
             self.plots.save(save_folder / "plots")
 
     def __eq__(self, other: Self) -> bool:
