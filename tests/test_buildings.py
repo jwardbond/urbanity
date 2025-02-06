@@ -9,9 +9,10 @@ from unittest.mock import patch
 
 import geopandas as gpd
 import shapely
-from geopandas.testing import assert_geodataframe_equal
+from geopandas.testing import assert_geodataframe_equal, assert_geoseries_equal
 
 from urbanity import Buildings
+from urbanity.buildings import shrink_buildings
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -125,7 +126,7 @@ class TestBuildings(unittest.TestCase):
             boundary=None,
             flag_col=None,
             shrink=False,
-            building_rep="mrr",
+            geom_style="mrr",
         )
 
         # Return type should be list of tuples
@@ -229,3 +230,75 @@ class TestBuildings(unittest.TestCase):
         # Data should be unchanged
         df = buildings.data[self.buildings.data.columns]
         assert_geodataframe_equal(df, self.buildings.data)
+
+
+class TestShrinkBuildings(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter(
+            "ignore",
+            category=DeprecationWarning,
+        )  # HACK geopandas warning suppression
+
+        # Sample geometries for testing
+        self.geoms = gpd.GeoSeries(
+            [
+                shapely.Polygon([(0, 0), (2, 0), (2, 2), (0, 2)]),  # Simple square
+                shapely.Polygon([(4, 0), (6, 0), (6, 2), (4, 2)]),  # Simple square
+                shapely.Polygon(
+                    [
+                        (0, 3),
+                        (3, 3),
+                        (3, 8),
+                        (0, 8),
+                        (0, 6),
+                        (2, 6),
+                        (2, 5),
+                        (0, 5),
+                    ],
+                ),  # Backwards C shape with width 2 on vertical. Multi poly when shrunk by 0.5
+            ],
+        )
+
+    def test_shrink_buildings(self):
+        debuff_size = 0.1
+        result = shrink_buildings(self.geoms, debuff_size)
+
+        # Should be the same number of geoms
+        self.assertTrue(len(result), len(self.geoms))
+
+        # Geoms should be smaller
+        for g, res in zip(self.geoms, result, strict=True):
+            self.assertTrue(res.area < g.area)
+
+    def test_shrink_buildings_with_fix_multi(self):
+        debuff_size = 0.5
+        result = shrink_buildings(self.geoms, debuff_size, fix_multi=True)
+
+        # Should be one more geom
+        self.assertEqual(len(result), (len(self.geoms)))
+
+        # Geoms
+        self.assertLess(result[0].area, self.geoms[0].area)
+        self.assertLess(result[1].area, self.geoms[1].area)
+        self.assertTrue(result[2].geom_type == "Polygon")
+        self.assertEqual(self.geoms[2].area, result[2].area)
+
+        for g, res in zip(self.geoms, result, strict=True):
+            self.assertTrue(res.area <= g.area)
+
+    def test_shrink_buildings_without_fix_multi(self):
+        debuff_size = 0.6
+        result = shrink_buildings(self.geoms, debuff_size, fix_multi=False)
+
+        self.assertTrue(result[2].geom_type == "MultiPolygon")
+
+    def test_no_shrink_when_debuff_zero(self):
+        # Test no change when debuff size is zero
+        debuff_size = 0.0
+        result = shrink_buildings(self.geoms, debuff_size)
+
+        assert_geoseries_equal(self.geoms, result)
+
+
+if __name__ == "__main__":
+    unittest.main()

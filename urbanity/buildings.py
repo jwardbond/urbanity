@@ -255,8 +255,8 @@ class Buildings:
         boundary: shapely.Polygon = None,
         debuff: float | None = 0.5,
         flag_col: str | None = None,
-        shrink: bool = True,
-        building_rep: str = "geometry",
+        shrink: bool = False,
+        geom_style: str | None = None,
     ) -> list[tuple[2]]:
         """Make sure the boundary is the same crs as buildings.proj_crs!.
 
@@ -269,8 +269,7 @@ class Buildings:
                 Defaults to None.
             shrink (bool, optional): If True, shrinks the boundary to approximate a convex hull around the contained buildings.
                 Defaults to False.
-            building_rep (str, optional): The representation to use for the buildings. Options are "mrr" (minimum rotated rectangle)
-                "geometry" (default geometry)
+            geom_style (str, optional): Passed to simplify_buildings before voronoi generation.
 
         Returns:
             A list of (geometry, building_id) tuples representing the voronoi polygons for each building.
@@ -279,35 +278,41 @@ class Buildings:
         original_crs = buildings.crs
         buildings = buildings.to_crs(self.proj_crs)
 
-        # If no boundary, just make the boundary the convex hull of all buildings
+        # Get all buildings within the boundary
         if boundary is None:
             boundary = buildings["geometry"].unary_union.convex_hull
 
-        # Get all buildings within the boundary
         buildings = buildings[buildings["geometry"].intersects(boundary, align=False)]
 
         if len(buildings) == 0:
             return (np.nan, np.nan)
 
+        if "Multipolygon" in buildings.geometry.geom_type.unique():
+            warnings.warn(
+                "Multipolygons found in building data. Voronoi generation may fail.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         # Shrink buildings a little unless otherwise specified.
         # Avoids voronoi problems with overlapping/touching buildings.
         if debuff:
-            buildings["geometry"] = buildings["geometry"].buffer(
-                -debuff,
-                join_style="mitre",
+            buildings["geometry"] = shrink_buildings(
+                buildings["geometry"],
+                debuff_size=debuff,
+                fix_multi=True,
             )
 
+        # Filter by flagged column
         if flag_col:
-            buildings = buildings[buildings[flag_col]].copy()
+            buildings = buildings[buildings[flag_col]]
 
         # Simplify buildings
-        if building_rep == "geometry":
-            pass
-        elif building_rep == "mrr":
-            buildings["geometry"] = buildings["geometry"].minimum_rotated_rectangle()
-        else:
-            msg = f"building_rep={building_rep} is not supported"
-            raise AttributeError(msg)
+        if geom_style is not None:
+            buildings["geometry"] = simplify_buildings(
+                buildings["geometry"],
+                simplification=geom_style,
+            )
 
         # Shrink boundary to the concave hull of the two most streetfacing (closest to the boundary)
         if shrink:
@@ -321,6 +326,7 @@ class Buildings:
         vd = vd.to_crs(original_crs)
         vd = vd[["id", "geometry"]]
         vd = list(vd.itertuples(index=False, name=None))
+
         return vd
 
     #
@@ -374,3 +380,46 @@ class Buildings:
         proj_crs = self.proj_crs
 
         return Buildings(data=data, proj_crs=proj_crs)
+
+
+def shrink_buildings(
+    geoms: gpd.GeoSeries,
+    debuff_size: float,
+    fix_multi: bool = False,
+) -> gpd.GeoSeries:
+    """Shrink buildings by debuff_size.
+
+    Args:
+        geoms (gpd.Geoseries): Building geometries
+        debuff_size(float): Amount to shrink the buildings by
+        fix_multi (bool, optional): If true, attempts to fix any multipolygons generated after
+            shrinking by reversing the shrinking step for only those geometries. Note that this won't fix
+            any multipolygons that were already present in geoms. Defaults to False.
+
+    Returns:
+        geoms (gpd.Geoseries): Adjusted geometries
+    """
+    original = geoms.copy()
+    geoms = geoms.buffer(-debuff_size, join_style="mitre")
+
+    if fix_multi:
+        mask = geoms.apply(lambda x: isinstance(x, shapely.MultiPolygon))
+        geoms[mask] = original[mask]
+
+    return geoms
+
+
+def simplify_buildings(geoms: gpd.GeoSeries, simplification: str) -> gpd.GeoSeries:
+    """Simplify building geometries.
+
+    Args:
+        geoms (gpd.Geoseries): Building geometries
+        simplification (str): Simplification type. Right now only supports "mrr"
+
+    """
+    if simplification == "mrr":
+        geoms = geoms.minimum_rotated_rectangle()
+    else:
+        msg = f"simplification {simplification} is not supported"
+        raise AttributeError(msg)
+    return geoms
