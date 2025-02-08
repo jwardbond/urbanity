@@ -287,13 +287,6 @@ class Buildings:
         if len(buildings) == 0:
             return gpd.GeoDataFrame(data={"id": [pd.NA]}, geometry=[pd.NA])
 
-        if "Multipolygon" in buildings.geometry.geom_type.unique():
-            warnings.warn(
-                "Multipolygons found in building data. Voronoi generation may fail.",
-                UserWarning,
-                stacklevel=2,
-            )
-
         # Shrink buildings a little unless otherwise specified.
         # Avoids voronoi problems with overlapping/touching buildings.
         if debuff:
@@ -302,6 +295,9 @@ class Buildings:
                 debuff_size=debuff,
                 fix_multi=True,
             )
+
+        # Prune remaining multipolygons
+        buildings = buildings[buildings["geometry"].geom_type == "Polygon"]
 
         # Filter by flagged column
         if flag_col:
@@ -321,8 +317,13 @@ class Buildings:
                 ratio=0.8,
             )
 
+        # Keep only valid buildings
+        valid_buildings = buildings[
+            buildings["geometry"].is_valid & ~buildings["geometry"].is_empty
+        ]
+
         # Voronoi
-        vd = voronoiDiagram4plg(buildings, boundary, densify=True)
+        vd = voronoiDiagram4plg(valid_buildings, boundary, densify=True)
         vd = vd.to_crs(original_crs)
         vd = vd[["id", "geometry"]]
 

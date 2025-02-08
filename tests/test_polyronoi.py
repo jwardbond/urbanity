@@ -4,9 +4,9 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import shapely
-from matplotlib import pyplot as plt
 
 from urbanity.polyronoi.longsgis import (
+    densify_polygon,
     minimum_distance,
     valid_comparisons,
     voronoiDiagram4plg,
@@ -120,6 +120,41 @@ class TestValidComparisons(unittest.TestCase):
             ((4, 4), (3, 3)),
         ]
         self.assertEqual(result, expected)
+
+
+class TestDensifyPolygon(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+
+    # def test_densify_points(self):
+    #     polygons = [
+    #         shapely.Polygon([(2, 2), (3, 2), (3, 3), (2, 3), (2, 2)]),
+    #         shapely.Polygon([(1, 1), (1, 1), (1, 1), (1, 1)]),
+    #     ]
+    #     gdf = gpd.GeoDataFrame(geometry=polygons)
+    #     result = densify_polygon(gdf)
+    #     self.assertEqual(len(result), 1)
+    #     self.assertEqual(len(result.iloc[0].geometry.exterior.coords), 5)
+
+    def test_densify_multiple_polygons_fixed_spacing(self):
+        polygons = [
+            shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)]),
+            shapely.Polygon([(2, 2), (3, 2), (3, 3), (2, 3), (2, 2)]),
+        ]
+        gdf = gpd.GeoDataFrame(geometry=polygons)
+        result = densify_polygon(gdf, spacing=0.1)
+        self.assertEqual(len(result), 2)
+        self.assertGreater(len(result.iloc[0].geometry.exterior.coords), 5)
+        self.assertGreater(len(result.iloc[1].geometry.exterior.coords), 5)
+
+    def test_densify_empty_polygon(self):
+        # Create an empty polygon
+        empty_polygon = shapely.Polygon([])
+        gdf = gpd.GeoDataFrame(geometry=[empty_polygon])
+
+        # Test with auto spacing
+        with self.assertRaises(ValueError):
+            densify_polygon(gdf)
 
 
 if __name__ == "__main__":

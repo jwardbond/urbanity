@@ -128,17 +128,19 @@ def densify_polygon(gdf: gpd.GeoDataFrame, spacing="auto") -> gpd.GeoDataFrame: 
     if not isinstance(spacing, str | float | int):
         msg = "Spacing must be a string, int, or float."
         raise TypeError(msg)
+    if isinstance(spacing, str) and (len(gdf) <= 1):
+        msg = "For dataframes with length <= 1, spacing cannot be set to auto."
+        raise ValueError(msg)
 
-    if isinstance(spacing, str) and spacing.upper() == "AUTO":
+    if isinstance(spacing, str) and (spacing.upper() == "AUTO"):
         spacing = 0.25 * minimum_distance(gdf)  # less than 0.5? The less, the better?
 
     # Create a geoseries containing lists of exterior points
     ext_list = gdf["geometry"].map(lambda g: list(g.exterior.coords))
-
-    # Add points to boundary of polygon
     gdf["geometry"] = ext_list.map(
-        lambda x: Polygon(_pnts_on_line_(np.array(list(x)), spacing=spacing))
+        lambda x: Polygon(_pnts_on_line_(np.array(x).reshape(-1, 2), spacing=spacing))
     )
+
     return gdf
 
 
@@ -167,6 +169,27 @@ def vertex_count_in_limit(smp: MultiPolygon, max_vertices: int) -> bool:
     return vertex_count <= max_vertices
 
 
+def input_warnings(gdf):
+    invalids = ~gdf["geometry"].is_valid
+    if sum(invalids) > 0:
+        warnings.warn(
+            "Invalid geometries encountered. Voronoi generation may fail.",
+            stacklevel=2,
+        )
+
+    non_polys = ~(gdf["geometry"].geom_type == "Polygon")
+    if sum(non_polys) > 0:
+        others = list(gdf[non_polys]["geometry"].unique())
+        warnings.warn(
+            f"Non polygon geometries {others} encounted. Voronoi generation may fail."
+        )
+
+    empty = gdf["geometry"].is_empty
+    if sum(empty) > 0:
+        msg = "Empty polygons detected in input."
+        raise ValueError(msg)
+
+
 def voronoiDiagram4plg(  # noqa: N802
     gdf: gpd.GeoDataFrame,
     mask,  # noqa: ANN001
@@ -190,18 +213,21 @@ def voronoiDiagram4plg(  # noqa: N802
     gdf = gdf.copy()
     setup_logger()
 
+    # input validation
+    input_warnings(gdf)
+
+    # densify
     if densify & (len(gdf) > 1):
         gdf = densify_polygon(gdf, spacing=spacing)
-
     gdf.reset_index(drop=True)
 
     # convert to MultiPolygon
     smp = gdf.unary_union
 
     # test for overly large inputs
-    if not vertex_count_in_limit(smp, 500000):
+    if not vertex_count_in_limit(smp, 300000):
         warnings.warn(
-            "More than 500 000 vertices detected. Voronoi generation not performed",
+            "More than 300 000 vertices detected. Voronoi generation not performed",
             stacklevel=2,
         )
         gdf.geometry = [pd.NA] * len(gdf)
