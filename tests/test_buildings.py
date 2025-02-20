@@ -102,11 +102,8 @@ class TestBuildingsInitialiazation(unittest.TestCase):
         # Data should be unchanged
         assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)
 
-    def test_create_from_geodataframe_no_overlaps(self) -> None:
-        pass
 
-
-class TestBuildingsCreateFromGeoDataframe(unittest.TestCase):
+class TestBuildingsCreate(unittest.TestCase):
     def setUp(self):
         warnings.simplefilter(
             "ignore",
@@ -136,7 +133,7 @@ class TestBuildingsCreateFromGeoDataframe(unittest.TestCase):
         self.proj_crs = "EPSG:3347"
 
     def test_explode_and_prune_invalid_geometries(self):
-        buildings = Buildings.create_from_geodataframe(self.gdf, self.proj_crs)
+        buildings = Buildings.create(self.gdf, self.proj_crs)
 
         # Should only have 2 valid single polygons (1 original + 1 from multipolygon)
         self.assertEqual(len(buildings.data), 2)
@@ -151,13 +148,13 @@ class TestBuildingsCreateFromGeoDataframe(unittest.TestCase):
         )
 
     def test_crs_transformations(self):
-        buildings = Buildings.create_from_geodataframe(self.gdf, self.proj_crs)
+        buildings = Buildings.create(self.gdf, self.proj_crs)
 
         # Final CRS should be EPSG:4326
         self.assertEqual(buildings.data.crs, "EPSG:4326")
 
     def test_buildings_instance_creation(self):
-        buildings = Buildings.create_from_geodataframe(self.gdf, self.proj_crs)
+        buildings = Buildings.create(self.gdf, self.proj_crs)
 
         # Verify instance type and attributes
         self.assertIsInstance(buildings, Buildings)

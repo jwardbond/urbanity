@@ -49,9 +49,9 @@ class Buildings:
         self.proj_crs = proj_crs
 
     @classmethod
-    def create_from_geodataframe(
+    def create(
         cls,
-        bd: gpd.GeoDataFrame,
+        bd: gpd.GeoDataFrame | pathlib.PurePath,
         proj_crs: str,
     ) -> Self:
         """Create a buildings object from a geodataframe of footprints.
@@ -68,6 +68,13 @@ class Buildings:
         Returns:
             Self: An instance of Buildings
         """
+        if not isinstance(bd, gpd.GeoDataFrame):  # TODO test coverage
+            try:
+                utils.load_geodf(bd)
+            except:  # noqa: E722
+                msg = "Must be created from a geodataframe, or a path to a parquet file that can be loaded into such."
+                raise ValueError(msg) from None
+
         bd = bd.copy()
         bd = bd.explode(index_parts=False).reset_index()
         bd = bd[bd.is_valid]
@@ -239,8 +246,8 @@ class Buildings:
 
     def sjoin_building_features(
         self,
-        df2: gpd.GeoDataFrame,
-        variables: list[str],
+        other: gpd.GeoDataFrame,
+        cols: list[str],
     ) -> Self:
         """Spatial join features from the most overlapping building in another dataset.
 
@@ -249,20 +256,20 @@ class Buildings:
         for each building.
 
         Args:
-            df2 (gpd.GeoDataFrame): The GeoDataFrame to spatially join with the buildings.
-            variables (list): A list of the variables (column names) from df2 that you want to add
+            other (gpd.GeoDataFrame): The GeoDataFrame to spatially join with the buildings.
+            cols (list): A list of the column names from other that you want to add
 
         Returns:
             Self: A new `Buildings` object containing the joined data.
         """
         data = self.data.copy()
-        df2 = df2.copy()
+        other = other.copy()
         original_geom = data[["id", "geometry"]]
 
         data = data.to_crs(self.proj_crs)
-        df2 = df2.to_crs(self.proj_crs)
+        other = other.to_crs(self.proj_crs)
 
-        new_data = utils.sjoin_greatest_intersection(data, df2, variables)
+        new_data = utils.sjoin_greatest_intersection(data, other, cols)
 
         new_data = new_data.drop("geometry", axis=1)
         new_data = original_geom.merge(new_data, on="id", how="inner")
@@ -293,15 +300,18 @@ class Buildings:
 
         ad_df = ad_df.copy()
 
-        data = data.to_crs(self.proj_crs)
+        if "id" in ad_df:
+            msg = "Address data cannot contain a column named 'id'"
+            raise ValueError(msg)
 
-        # Address df should be in projected crs
+        # Join is done in projected coordinates
         if ad_df.crs != self.proj_crs:
             warnings.warn(
                 f"Address crs did not match building projected crs:{self.proj_crs}. Attempting to convert",
                 stacklevel=2,
             )
-            ad_df.to_crs(self.proj_crs)
+            ad_df = ad_df.to_crs(self.proj_crs)
+        data = data.to_crs(self.proj_crs)
 
         # Perform join
         new_data = gpd.sjoin(data, ad_df, how="left", predicate="contains")
@@ -358,6 +368,7 @@ class Buildings:
             )
 
         # Output formatting
+        # TODO address indices should be a list of ints, not floats
         new_data = new_data.rename(columns={"index_right": "address_indices"})
         new_data = new_data.drop("geometry", axis=1)
         new_data = original_geom.merge(new_data, on="id", how="inner")
