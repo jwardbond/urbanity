@@ -189,7 +189,17 @@ def download_osm_generic(
     # Output formatting
     gdf = gdf.reset_index()
     gdf.index = gdf.index.astype(np.int64)
+
     # TODO prune columns
+    filt = [
+        "osmid",
+        "addr:housenumber",
+        "addr:street",
+        "addr:unit",
+        "addr:postcode",
+        "geometry",
+    ]
+    gdf = gdf[sorted(gdf.columns.intersection(filt), key=lambda x: filt.index(x))]
 
     gdf.insert(loc=0, column="id", value=gdf.index)
 
