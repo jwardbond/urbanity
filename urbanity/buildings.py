@@ -77,12 +77,16 @@ class Buildings:
 
         bd = bd.copy()
         bd = bd.explode(index_parts=False).reset_index()
+
         bd = bd[bd.is_valid]
         bd = bd[~bd.is_empty]
 
         bd = bd.to_crs(proj_crs)
         bd = _dissolve_overlaps(bd)
         bd = bd.to_crs("EPSG:4326")
+
+        bd = bd[bd.is_valid]  # TODO surely there is some better logic here
+        bd = bd[~bd.is_empty]
 
         return Buildings(data=bd, proj_crs=proj_crs)
 
@@ -477,6 +481,7 @@ def _dissolve_overlaps(bd: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     dissolved = bd.dissolve(by="group", aggfunc="first", as_index=False)
 
     dissolved["geometry"].buffer(0).reset_index()
+    dissolved["geometry"] = dissolved["geometry"].make_valid()
 
     return dissolved.drop(columns=["group"])
 
