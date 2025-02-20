@@ -17,12 +17,6 @@ import pandas as pd
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union, voronoi_diagram
 
-warnings.filterwarnings(
-    action="ignore",
-    message="The weights matrix is not fully connected",
-    module="libpysal",
-)
-
 
 def setup_logger():
     log_file = f"worker_{os.getpid()}.log"  # Each worker gets a separate log file
@@ -135,11 +129,19 @@ def densify_polygon(gdf: gpd.GeoDataFrame, spacing="auto") -> gpd.GeoDataFrame: 
     if isinstance(spacing, str) and (spacing.upper() == "AUTO"):
         spacing = 0.25 * minimum_distance(gdf)  # less than 0.5? The less, the better?
 
-    # Create a geoseries containing lists of exterior points
-    ext_list = gdf["geometry"].map(lambda g: list(g.exterior.coords))
-    gdf["geometry"] = ext_list.map(
-        lambda x: Polygon(_pnts_on_line_(np.array(x).reshape(-1, 2), spacing=spacing))
-    )
+    try:
+        # Create a geoseries containing lists of exterior points
+        ext_list = gdf["geometry"].map(lambda g: list(g.exterior.coords))
+
+        gdf["geometry"] = ext_list.map(
+            lambda x: Polygon(
+                _pnts_on_line_(np.array(x).reshape(-1, 2), spacing=spacing)
+            ),
+        )
+    except Exception as e:
+        msg = "Densification failed. This is usually do to invalid geometries being encountered (empty polygons, overlapping polygons, etc.)"
+        msg = f"{msg}\nOriginal error: {e!s}"
+        raise type(e)(msg) from e
 
     return gdf
 
@@ -227,7 +229,7 @@ def voronoiDiagram4plg(  # noqa: N802
     # test for overly large inputs
     if not vertex_count_in_limit(smp, 300000):
         warnings.warn(
-            "More than 300 000 vertices detected. Voronoi generation not performed",
+            "More than 300 000 vertices detected after densification. Voronoi generation not performed",
             stacklevel=2,
         )
         gdf.geometry = [pd.NA] * len(gdf)

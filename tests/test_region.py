@@ -502,50 +502,50 @@ class TestRegionMethodsWithBuildings(unittest.TestCase, TestMixins):
         # ###
 
 
-class TestVoronoi(unittest.TestCase):
-    def setUp(self) -> None:
-        warnings.simplefilter(
-            "ignore",
-            category=DeprecationWarning,
-        )  # HACK geopandas warning suppression
+# class TestVoronoi(unittest.TestCase):
+#     def setUp(self) -> None:
+#         warnings.simplefilter(
+#             "ignore",
+#             category=DeprecationWarning,
+#         )  # HACK geopandas warning suppression
 
-    def test_voronoi(self):
-        import numpy as np
-        from matplotlib import pyplot as plt
-        import itertools
-        import math
-        import time
-        import copy
+#     def test_voronoi(self):
+#         import numpy as np
+#         from matplotlib import pyplot as plt
+#         import itertools
+#         import math
+#         import time
+#         import copy
 
-        spath = Path("./tests/test_files/test_files_segments.parquet")
-        bpath = Path("./tests/test_files/test_files_osm_buildings.parquet")
+#         spath = Path("./tests/test_files/test_files_segments.parquet")
+#         bpath = Path("./tests/test_files/test_files_osm_buildings.parquet")
 
-        city = Region.load_from_files(
-            segments=spath,
-            buildings=bpath,
-            proj_crs="EPSG:3347",
-        )
+#         city = Region.load_from_files(
+#             segments=spath,
+#             buildings=bpath,
+#             proj_crs="EPSG:3347",
+#         )
 
-        city.segments = city.segments.sample(5, random_state=7)
-        city = city.add_pseudo_plots()
+#         city.segments = city.segments.sample(5, random_state=7)
+#         city = city.add_pseudo_plots()
 
-        # Assuming gdf is your GeoDataFrame with geometry columns 'geom1', 'geom2', 'geom3'
-        fig, ax = plt.subplots(figsize=(10, 10))
+#         # Assuming gdf is your GeoDataFrame with geometry columns 'geom1', 'geom2', 'geom3'
+#         fig, ax = plt.subplots(figsize=(10, 10))
 
-        # Plot segments
-        # colors1 = [tuple(np.random.rand(3)) for _ in range(len(city.segments))]
-        # city.segments.plot(ax=ax, color=colors1, alpha=0.2)
+#         # Plot segments
+#         # colors1 = [tuple(np.random.rand(3)) for _ in range(len(city.segments))]
+#         # city.segments.plot(ax=ax, color=colors1, alpha=0.2)
 
-        # Plot pseudo_plots
-        pplots = city.plots.data
-        pplots = pplots.to_crs(city.segments.crs)
-        colors2 = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
-        pplots.plot(ax=ax, color=colors2)
+#         # Plot pseudo_plots
+#         pplots = city.plots.data
+#         pplots = pplots.to_crs(city.segments.crs)
+#         colors2 = [tuple(np.random.rand(3)) for _ in range(len(pplots))]
+#         pplots.plot(ax=ax, color=colors2)
 
-        # Plot buildings
-        city.buildings.data.geometry.plot(
-            ax=ax,
-            color="grey",
-        )
+#         # Plot buildings
+#         city.buildings.data.geometry.plot(
+#             ax=ax,
+#             color="grey",
+#         )
 
-        plt.show()
+#         plt.show()

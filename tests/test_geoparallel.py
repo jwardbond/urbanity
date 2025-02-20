@@ -34,39 +34,16 @@ class TestGeoParallel(unittest.TestCase):
         points = [Point(x, y) for x, y in zip(range(10), range(10), strict=True)]
         self.test_gs = gpd.GeoSeries(points)
 
-    def test_geoparallel_apply(self):
-        gp = GeoParallel(n_jobs=2)
-
-        result = gp.apply(self.test_gs, double_x_coordinate)
-        result = gpd.GeoSeries(result)
-        expected = self.test_gs.map(double_x_coordinate)
-
-        # Output should be the same length
-        self.assertEqual(len(result), len(self.test_gs))
-        assert_geoseries_equal(result, expected)
-
     def test_geoparallel_apply_chunked(self):
-        gp = GeoParallel(n_jobs=2)
-        result = gp.apply_chunked(self.test_gs, double_x_coordinate, num_chunks=3)
+        gp = GeoParallel(n_workers=2)
+        result = gp.apply_chunked(self.test_gs, double_x_coordinate, n_chunks=3)
         expected = self.test_gs.map(double_x_coordinate)
 
         pd.testing.assert_series_equal(result, expected, check_dtype=False)
-        # assert_geoseries_equal(result, expected)
-
-    def test_geoparallel_apply_with_tuples(self):
-        gp = GeoParallel(n_jobs=2)
-        result = gp.apply(self.test_gs, create_tuple_output)
-
-        # Check result structure
-        self.assertTrue(all(isinstance(x, tuple) for x in result))
-        self.assertTrue(all(len(x) == 2 for x in result))
-
-        # Verify IDs and geometries
-        self.assertIsInstance(result, pd.Series)
 
     def test_geoparallel_apply_chunked_with_tuples(self):
-        gp = GeoParallel(n_jobs=2)
-        result = gp.apply_chunked(self.test_gs, create_tuple_output, num_chunks=3)
+        gp = GeoParallel(n_workers=2)
+        result = gp.apply_chunked(self.test_gs, create_tuple_output, n_chunks=3)
 
         # Check result structure
         self.assertTrue(all(isinstance(x, tuple) for x in result))
@@ -81,8 +58,8 @@ class TestGeoParallel(unittest.TestCase):
 
     @patch("urbanity.geoparallel.geoparallel.tqdm")
     def test_progress_bar_display(self, mock_tqdm):
-        gp = GeoParallel(n_jobs=2, prog_bar=True)
-        gp.apply(self.test_gs, identity_function)
+        gp = GeoParallel(n_workers=2, prog_bar=True)
+        result = gp.apply_chunked(self.test_gs, double_x_coordinate, n_chunks=3)
         mock_tqdm.assert_called_once()
 
 

@@ -1,7 +1,7 @@
 import copy
+from functools import partial
 from pathlib import PurePath
 from typing import Self
-from functools import partial
 
 import geopandas as gpd
 import pandas as pd
@@ -12,8 +12,8 @@ from genregion import generate_regions
 import utils
 
 from .buildings import Buildings
-from .plots import Plots
 from .geoparallel import GeoParallel
+from .plots import Plots
 
 # TODO add saving
 # TODO add adjacency attribute
@@ -237,9 +237,8 @@ class Region:
             plots=plots,
         )
 
-    @classmethod
+    @staticmethod
     def _subdivide_segments(
-        cls,
         segments: gpd.GeoDataFrame,
         max_area: int,
     ) -> gpd.GeoDataFrame:
@@ -263,7 +262,7 @@ class Region:
         while not larger.empty:
             # Split large geometries
             larger["geo_tmp"] = larger.apply(
-                lambda row: cls._split_polygon(row.geometry),
+                lambda row: Region._split_polygon(row.geometry),
                 axis=1,
             )
             larger = larger.explode(column="geo_tmp", ignore_index=True)
@@ -283,8 +282,8 @@ class Region:
 
         return segments
 
-    @classmethod
-    def _split_polygon(cls, geom: shapely.Polygon) -> list[shapely.Polygon]:
+    @staticmethod
+    def _split_polygon(geom: shapely.Polygon) -> list[shapely.Polygon]:
         """Splits a polygon in half either vertically or horizontally.
 
         Args:
@@ -510,12 +509,17 @@ class Region:
         )
 
     # Generate list of voronoi polygons for each segment
+    # this function gets applied within add_pseudo_plots
     # note that this is done in the buildings' proj_crs
     # (which should be the regions proj_crs as well)
     @staticmethod
-    def gen_vpolys(boundary: shapely.Polygon, buildings, **kwargs) -> list[tuple]:
+    def _gen_vpolys(
+        boundary: shapely.Polygon,
+        buildings: Buildings,
+        **kwargs,
+    ) -> list[tuple]:
         polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
-        polys = polys["geometry"].to_list()
+        polys = polys.to_list()
         return polys
 
     def add_pseudo_plots(
@@ -523,7 +527,7 @@ class Region:
         segment_flag: str = "",
         **kwargs,
     ) -> Self:
-        """#TODO.
+        """Creates approximate voronoi diagrams for every building in a per-segment basis.
 
         Args:
             segment_flag (str, optional): Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
@@ -542,18 +546,20 @@ class Region:
             else self.segments
         )
         segments = segments.copy()
+        segments = segments.sample(frac=1).reset_index(drop=True)  # TODO
 
         gp = GeoParallel()
-        gen_vpolys = partial(self.gen_vpolys, buildings=buildings, **kwargs)
+        gen_vpolys = partial(
+            Region._gen_vpolys, buildings=buildings, **kwargs
+        )  # TODO pre-intersect buildings?
 
         plots = gp.apply_chunked(
-            segments["geometry"].to_crs(buildings.proj_crs),
+            segments["geometry"],
             gen_vpolys,
+            n_chunks=100,
         )
 
-        # plots = (
-        #     segments["geometry"].to_crs(buildings.proj_crs).apply(gen_vpolys)
-        # )
+        # plots = segments["geometry"].to_crs(buildings.proj_crs).apply(gen_vpolys)
 
         plots = plots.explode().reset_index(drop=True)
         plots = plots[plots.notna()]

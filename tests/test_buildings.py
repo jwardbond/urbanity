@@ -13,7 +13,7 @@ import shapely
 from geopandas.testing import assert_geodataframe_equal, assert_geoseries_equal
 
 from urbanity import Buildings
-from urbanity.buildings import shrink_buildings
+from urbanity.buildings import _dissolve_overlaps, _shrink_buildings
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -23,7 +23,149 @@ os.environ["GDAL_DATA"] = os.path.join(
 )  # HACK GDAL warning suppression
 
 
-class TestBuildings(unittest.TestCase):
+class TestBuildingsInitialiazation(unittest.TestCase):
+    def setUp(self) -> None:
+        warnings.simplefilter(
+            "ignore",
+            category=DeprecationWarning,
+        )  # HACK geopandas warning suppression
+
+        # Create a mock region
+
+        building_data = {
+            "id": [0, 1, 22, 31],
+            "height": [-1.0, 20.0, 12.0, 25.0],
+            "geometry": [
+                shapely.Polygon([(0, 0), (5, 0), (5, 10), (0, 10)]),  # A=50, V=500
+                shapely.Polygon(
+                    [(-5, -20), (-13, -20), (-13, -10), (-5, -10)],
+                ),  # A=80, V=1600
+                shapely.Polygon([(13, 0), (19, 0), (19, 10), (13, 10)]),  # A=60, V=720
+                shapely.Polygon(
+                    [(19, -30), (28, -30), (28, -20), (19, -20)],
+                ),  # A=90, V=2250
+            ],
+        }
+
+        self.proj_crs = "EPSG:3347"
+        self.data = gpd.GeoDataFrame(building_data, crs=self.proj_crs)
+        self.save_folder = Path(__file__).parent / "test_files" / "test_buildings_save"
+
+    def test_init(self) -> None:
+        buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
+
+        self.assertTrue("area" in buildings.data)
+        self.assertTrue("id" in buildings.data)
+
+        # Area calcs should be correct
+        self.assertAlmostEqual(90, buildings.data.iloc[3]["area"], places=5)
+
+        # Should be in "EPSG:4326"
+        self.assertEqual(buildings.data.crs, "EPSG:4326")
+
+    @patch("pathlib.Path.mkdir")
+    @patch("utils.save_geodf")
+    def test_save_only_one_geom(self, mock_save, mock_mkdir) -> None:  # noqa: ANN001, ARG002
+        buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
+
+        buildings.save(self.save_folder)
+        args, _ = mock_save.call_args
+        gdf, path = args
+
+        # Utils save should only be called once
+        self.assertEqual(mock_save.call_count, 1)
+
+        # The dataframe should have the right name
+        self.assertEqual(path.name, "buildings")
+
+        # The dataframe should have only one geometry column
+        self.assertEqual(
+            sum(
+                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
+                for c in gdf.columns
+            ),
+            1,
+        )
+
+    def test_save_and_load(self) -> None:
+        buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
+
+        if self.save_folder.exists():
+            shutil.rmtree(self.save_folder)
+
+        buildings.save(self.save_folder)
+        loaded = Buildings.load(self.save_folder, proj_crs="EPSG:3347")
+
+        # Files should be created
+        self.assertTrue(Path(self.save_folder / "buildings.parquet").exists())
+
+        # Data should be unchanged
+        assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)
+
+    def test_create_from_geodataframe_no_overlaps(self) -> None:
+        pass
+
+
+class TestBuildingsCreateFromGeoDataframe(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter(
+            "ignore",
+            category=DeprecationWarning,
+        )  # HACK geopandas warning suppression
+
+        # Create sample data with mix of valid/invalid geometries
+        self.valid_poly = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)])
+        self.invalid_poly = shapely.Polygon([(0, 0), (1, 1), (1, 0), (0, 1), (0, 0)])
+        self.multi_poly = shapely.MultiPolygon(
+            [
+                shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)]),
+                shapely.Polygon([(2, 2), (3, 2), (3, 3), (2, 3), (2, 2)]),
+            ],
+        )
+        self.empty_poly = shapely.Polygon([])
+
+        data = {
+            "geometry": [
+                self.valid_poly,
+                self.invalid_poly,
+                self.multi_poly,
+                self.empty_poly,
+            ],
+        }
+        self.gdf = gpd.GeoDataFrame(data, crs="EPSG:4326")
+        self.proj_crs = "EPSG:3347"
+
+    def test_explode_and_prune_invalid_geometries(self):
+        buildings = Buildings.create_from_geodataframe(self.gdf, self.proj_crs)
+
+        # Should only have 2 valid single polygons (1 original + 1 from multipolygon)
+        self.assertEqual(len(buildings.data), 2)
+
+        # Verify no invalid/empty geometries remain
+        self.assertTrue(buildings.data.is_valid.all())
+        self.assertFalse(buildings.data.is_empty.any())
+
+        # Verify no multipolygons remain
+        self.assertTrue(
+            all(isinstance(geom, shapely.Polygon) for geom in buildings.data.geometry),
+        )
+
+    def test_crs_transformations(self):
+        buildings = Buildings.create_from_geodataframe(self.gdf, self.proj_crs)
+
+        # Final CRS should be EPSG:4326
+        self.assertEqual(buildings.data.crs, "EPSG:4326")
+
+    def test_buildings_instance_creation(self):
+        buildings = Buildings.create_from_geodataframe(self.gdf, self.proj_crs)
+
+        # Verify instance type and attributes
+        self.assertIsInstance(buildings, Buildings)
+        self.assertEqual(buildings.proj_crs, self.proj_crs)
+        self.assertIsInstance(buildings.data, gpd.GeoDataFrame)
+
+
+class TestBuildingsMethods(unittest.TestCase):
     def setUp(self) -> None:
         warnings.simplefilter(
             "ignore",
@@ -51,15 +193,6 @@ class TestBuildings(unittest.TestCase):
         self.data = gpd.GeoDataFrame(building_data, crs=self.proj_crs)
         self.buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
         self.save_folder = Path(__file__).parent / "test_files" / "test_buildings_save"
-
-    def test_init(self) -> None:
-        buildings = Buildings(data=self.data, proj_crs=self.proj_crs)
-
-        self.assertTrue("area" in buildings.data)
-        self.assertTrue("id" in buildings.data)
-
-        # Area calcs should be correct
-        self.assertAlmostEqual(90, buildings.data.iloc[3]["area"], places=5)
 
     def test_create_size_flag(self) -> None:
         b = self.buildings
@@ -126,24 +259,15 @@ class TestBuildings(unittest.TestCase):
         voronoi_polys = buildings.create_voronoi_polygons(
             boundary=None,
             flag_col=None,
-            shrink=False,
-            geom_style=None,
+            debuff=0.01,
         )
 
-        # Return type should be a gdf with two columns
-        self.assertIsInstance(voronoi_polys, gpd.GeoDataFrame)
-        self.assertIn("id", voronoi_polys)
-        self.assertIn("geometry", voronoi_polys)
-        self.assertEqual(len(voronoi_polys.columns), 2)
-        self.assertIsInstance(voronoi_polys["geometry"].iloc[0], shapely.Polygon)
+        # Return type should be a geoseries
+        self.assertIsInstance(voronoi_polys, gpd.GeoSeries)
+        self.assertIsInstance(voronoi_polys[0], shapely.Polygon)
 
         # lengths should be the same
         self.assertEqual(len(buildings.data), len(voronoi_polys))
-
-        # building ids should still be in the voronoi polygons data
-        self.assertTrue(
-            all(i in buildings.data["id"].to_list() for i in voronoi_polys["id"]),
-        )
 
     def test_create_voronoi_polygons_no_buildings(self):
         buildings = gpd.GeoDataFrame(
@@ -156,56 +280,12 @@ class TestBuildings(unittest.TestCase):
         voronoi_polys = buildings.create_voronoi_polygons(
             boundary=shapely.Polygon([(0, 0), (5, 0), (5, 10), (0, 10)]),
             flag_col=None,
-            shrink=False,
-            geom_style=None,
         )
 
-        self.assertIsInstance(voronoi_polys, gpd.GeoDataFrame)
-        self.assertIn("id", voronoi_polys)
-        self.assertIn("geometry", voronoi_polys)
-        self.assertEqual(len(voronoi_polys.columns), 2)
+        self.assertIsInstance(voronoi_polys, gpd.GeoSeries)
 
         self.assertEqual(len(voronoi_polys), 1)
-        self.assertEqual(sum(voronoi_polys["geometry"].notna()), 0)
-
-    @patch("pathlib.Path.mkdir")
-    @patch("utils.save_geodf")
-    def test_save_only_one_geom(self, mock_save, mock_mkdir) -> None:  # noqa: ANN001, ARG002
-        buildings = copy.deepcopy(self.buildings)
-
-        buildings.save(self.save_folder)
-        args, _ = mock_save.call_args
-        gdf, path = args
-
-        # Utils save should only be called once
-        self.assertEqual(mock_save.call_count, 1)
-
-        # The dataframe should have the right name
-        self.assertEqual(path.name, "buildings")
-
-        # The dataframe should have only one geometry column
-        self.assertEqual(
-            sum(
-                isinstance(gdf[c].iloc[0], shapely.geometry.base.BaseGeometry)
-                for c in gdf.columns
-            ),
-            1,
-        )
-
-    def test_save_and_load(self) -> None:
-        buildings = copy.deepcopy(self.buildings)
-
-        if self.save_folder.exists():
-            shutil.rmtree(self.save_folder)
-
-        buildings.save(self.save_folder)
-        loaded = Buildings.load(self.save_folder, proj_crs="EPSG:3347")
-
-        # Files should be created
-        self.assertTrue(Path(self.save_folder / "buildings.parquet").exists())
-
-        # Data should be unchanged
-        assert_geodataframe_equal(loaded.data, buildings.data, check_like=True)
+        self.assertEqual(sum(voronoi_polys.notna()), 0)
 
     def test_sjoin_addresses(self) -> None:
         # Setup
@@ -288,7 +368,7 @@ class TestShrinkBuildings(unittest.TestCase):
 
     def test_shrink_buildings(self):
         debuff_size = 0.1
-        result = shrink_buildings(self.geoms, debuff_size)
+        result = _shrink_buildings(self.geoms, debuff_size)
 
         # Should be the same number of geoms
         self.assertTrue(len(result), len(self.geoms))
@@ -299,7 +379,7 @@ class TestShrinkBuildings(unittest.TestCase):
 
     def test_shrink_buildings_with_fix_multi(self):
         debuff_size = 0.5
-        result = shrink_buildings(self.geoms, debuff_size, fix_multi=True)
+        result = _shrink_buildings(self.geoms, debuff_size, fix_multi=True)
 
         # Should be one more geom
         self.assertEqual(len(result), (len(self.geoms)))
@@ -315,16 +395,77 @@ class TestShrinkBuildings(unittest.TestCase):
 
     def test_shrink_buildings_without_fix_multi(self):
         debuff_size = 0.6
-        result = shrink_buildings(self.geoms, debuff_size, fix_multi=False)
+        result = _shrink_buildings(self.geoms, debuff_size, fix_multi=False)
 
         self.assertTrue(result[2].geom_type == "MultiPolygon")
 
     def test_no_shrink_when_debuff_zero(self):
         # Test no change when debuff size is zero
         debuff_size = 0.0
-        result = shrink_buildings(self.geoms, debuff_size)
+        result = _shrink_buildings(self.geoms, debuff_size)
 
         assert_geoseries_equal(self.geoms, result)
+
+
+class TestDissolveOverlaps(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter(
+            "ignore",
+            category=DeprecationWarning,
+        )  # HACK geopandas warning suppression
+
+    def test_overlapping_polygons_dissolve(self):
+        # Create two overlapping polygons
+        poly1 = shapely.Polygon([(0, 0), (2, 0), (2, 2), (0, 2)])
+        poly2 = shapely.Polygon([(1, 1), (3, 1), (3, 3), (1, 3)])
+        data = {"geometry": [poly1, poly2], "id": [0, 1], "value": ["a", "b"]}
+        gdf = gpd.GeoDataFrame(data)
+
+        result = _dissolve_overlaps(gdf)
+
+        self.assertIn("id", result)
+        self.assertIn("value", result)
+        self.assertNotIn("group", result)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["value"], "a")
+        self.assertEqual(result.iloc[0]["id"], 0)
+
+    def test_touching_polygons_remain_separate(self):
+        # Create two touching polygons
+        poly1 = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
+        poly2 = shapely.Polygon([(1, 0), (2, 0), (2, 1), (1, 1)])
+        data = {"geometry": [poly1, poly2], "id": [1, 2], "value": ["a", "b"]}
+        gdf = gpd.GeoDataFrame(data)
+
+        result = _dissolve_overlaps(gdf)
+
+        self.assertEqual(len(result), 2)
+        assert_geodataframe_equal(gdf, result)
+
+    def test_identical_polygons(self):
+        poly1 = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)])
+        poly2 = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)])
+        poly3 = shapely.Polygon([(2, 2), (3, 2), (3, 3), (2, 3), (2, 2)])
+
+        data = {
+            "geometry": [poly1, poly2, poly3],
+            "id": [0, 1, 2],
+            "value": ["a", "b", "c"],
+        }
+        gdf = gpd.GeoDataFrame(data)
+
+        expected = gpd.GeoDataFrame(
+            {
+                "geometry": [poly1, poly3],
+                "id": [0, 2],
+                "value": ["a", "c"],
+            },
+        )
+
+        result = _dissolve_overlaps(gdf)
+
+        assert_geodataframe_equal(result, expected, normalize=True, check_like=True)
 
 
 if __name__ == "__main__":

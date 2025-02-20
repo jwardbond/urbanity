@@ -5,10 +5,10 @@ from typing import Self
 import geopandas as gpd
 
 
-class PolyGraph:
+class SpatialGraph:
     """A graph created from geodata.
 
-    Typically created using PolyGraph.create_from_geoseries()
+    Typically created using SpatialGraph.create_from_geoseries()
 
     Supported predicates for building the graph are:
         - `intersects`
@@ -20,7 +20,7 @@ class PolyGraph:
     """
 
     def __init__(self, adj_list: dict):
-        """Create PolyGraph object.
+        """Create SpatialGraph object.
 
         Args:
             adj_list (dict): The graphy of adjacent polygons in an adjaceny list form ({id: {neighbour ids}}).
@@ -33,7 +33,7 @@ class PolyGraph:
         gs: gpd.GeoSeries,
         predicate: str = "intersects",
     ) -> Self:
-        """Create a PolyGraph object from a geoseries.
+        """Create a SpatialGraph object from a geoseries.
 
         Args:
             gs (gpd.GeoSeries): Input geoseries. Preferrably in a projected crs
@@ -42,20 +42,21 @@ class PolyGraph:
         """
         gs = gs.copy()
 
+        original_index = gs.index.to_list()
         sindex = gs.sindex
 
         graph = {}
         for idx, poly in gs.items():
-            neighbours = set(sindex.query(poly, predicate))
+            neighbour_sidxs = sindex.query(poly, predicate)
+            neighbours = {original_index[i] for i in neighbour_sidxs}
 
-            # Handle predicate differences. e.g. polygons intersect themselves,
-            # but dont overlap themselves apparently
-            if predicate == "intersects":
+            # Some predicates will produce self-edges
+            if idx in neighbours:
                 neighbours.remove(idx)
 
             graph[idx] = neighbours
 
-        return PolyGraph(adj_list=graph)
+        return SpatialGraph(adj_list=graph)
 
     def create_connected_components_map(self) -> dict:
         """Generates an {id: cc_id} map.
@@ -87,6 +88,6 @@ class PolyGraph:
             v = stack.pop(-1)
             if v not in visited:
                 visited.add(v)
-                stack = stack + self.adj_list[v]
+                stack = stack + list(self.adj_list[v])
 
         return visited
