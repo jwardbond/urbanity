@@ -618,7 +618,7 @@ class Region:
         segments = self.segments.copy()
         proj_crs = self.proj_crs
 
-        Region(
+        return Region(
             segments=segments,
             proj_crs=proj_crs,
             road_network=road_network,
