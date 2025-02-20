@@ -604,6 +604,28 @@ class Region:
         if self._plots is not None:
             self.plots.save(save_folder / "plots")
 
+    def copy(self, deep: bool = True) -> Self:
+        """Returns a deepcopy by default to be consistent with pandas behaviour.
+
+        TODO test this method
+        """
+        buildings = self._buildings.copy(deep=deep) if self._buildings else None
+        plots = self._plots.copy(deep=deep) if self._plots else None
+        road_network = (
+            copy.deepcopy(self.road_network) if deep else copy.copy(self.road_network)
+        )
+
+        segments = self.segments.copy()
+        proj_crs = self.proj_crs
+
+        Region(
+            segments=segments,
+            proj_crs=proj_crs,
+            road_network=road_network,
+            buildings=buildings,
+            plots=plots,
+        )
+
     def __eq__(self, other: Self) -> bool:
         bl = self.segments.equals(other.segments)
         bl = bl and self.proj_crs == other.proj_crs
