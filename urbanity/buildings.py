@@ -432,7 +432,7 @@ class Buildings:
             buildings["geometry"] = _shrink_buildings(
                 buildings["geometry"],
                 debuff_size=debuff,
-                fix_multi=True,
+                attempt_fix=True,
             )
 
         # Voronoi
@@ -489,16 +489,15 @@ def _dissolve_overlaps(bd: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def _shrink_buildings(
     geoms: gpd.GeoSeries,
     debuff_size: float,
-    fix_multi: bool = False,
+    attempt_fix: bool = False,
 ) -> gpd.GeoSeries:
     """Shrink buildings by debuff_size.
 
     Args:
         geoms (gpd.Geoseries): Building geometries
         debuff_size(float): Amount to shrink the buildings by
-        fix_multi (bool, optional): If true, attempts to fix any multipolygons generated after
-            shrinking by reversing the shrinking step for only those geometries. Note that this won't fix
-            any multipolygons that were already present in geoms. Defaults to False.
+        attempt_fix (bool, optional): If true, attempts to fix any multipolygons, invalid geoms, or empty geoms created
+            by returning the building to its original geometry.
 
     Returns:
         geoms (gpd.Geoseries): Adjusted geometries
@@ -506,8 +505,12 @@ def _shrink_buildings(
     original = geoms.copy()
     geoms = geoms.buffer(-debuff_size, join_style="mitre")
 
-    if fix_multi:
-        mask = geoms.apply(lambda x: isinstance(x, shapely.MultiPolygon))
+    if attempt_fix:
+        mask = geoms.apply(
+            lambda x: isinstance(x, shapely.MultiPolygon)
+            or not x.is_valid
+            or x.is_empty,
+        )
         geoms[mask] = original[mask]
 
     return geoms

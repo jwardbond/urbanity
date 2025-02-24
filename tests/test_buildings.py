@@ -374,9 +374,9 @@ class TestShrinkBuildings(unittest.TestCase):
         for g, res in zip(self.geoms, result, strict=True):
             self.assertTrue(res.area < g.area)
 
-    def test_shrink_buildings_with_fix_multi(self):
+    def test_shrink_buildings_with_attempt_fix(self):
         debuff_size = 0.5
-        result = _shrink_buildings(self.geoms, debuff_size, fix_multi=True)
+        result = _shrink_buildings(self.geoms, debuff_size, attempt_fix=True)
 
         # Should be one more geom
         self.assertEqual(len(result), (len(self.geoms)))
@@ -390,9 +390,9 @@ class TestShrinkBuildings(unittest.TestCase):
         for g, res in zip(self.geoms, result, strict=True):
             self.assertTrue(res.area <= g.area)
 
-    def test_shrink_buildings_without_fix_multi(self):
+    def test_shrink_buildings_without_attempt_fix(self):
         debuff_size = 0.6
-        result = _shrink_buildings(self.geoms, debuff_size, fix_multi=False)
+        result = _shrink_buildings(self.geoms, debuff_size, attempt_fix=False)
 
         self.assertTrue(result[2].geom_type == "MultiPolygon")
 
