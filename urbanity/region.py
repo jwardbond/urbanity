@@ -508,31 +508,21 @@ class Region:
             buildings=self._buildings,
         )
 
-    # Generate list of voronoi polygons for each segment
-    # this function gets applied within add_pseudo_plots
-    # note that this is done in the buildings' proj_crs
-    # (which should be the regions proj_crs as well)
-    @staticmethod
-    def _gen_vpolys(
-        boundary: shapely.Polygon,
-        buildings: Buildings,
-        **kwargs,
-    ) -> list[tuple]:
-        polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
-        polys = polys.to_list()
-        return polys
-
     def add_pseudo_plots(
         self,
         segment_flag: str = "",
-        **kwargs,
+        n_chunks: int | None = None,
+        n_workers: int | None = None,
+        prog_bar: bool = False,
     ) -> Self:
         """Creates approximate voronoi diagrams for every building in a per-segment basis.
 
         Args:
             segment_flag (str, optional): Only generate plots for segments flagged with this flag. Defaults to "" (all segments).
             progress_bar (bool, optional): True will print a swifter progress bar. Defaults to False
-            **kwargs: Other arguments that will be passed to Buildings.create_voronoi_plots.
+            n_chunks (int, optional): Number of chunks to use when parallelizing. Defaults None (ends up being n_workers * 4).
+            n_workes (int, optional): Number of workers to use when parallelizing. Defaults to None (ends up being cpu cores - 1).
+            prog_bar (bool, optional): If true, prints a progress bar. Defaults to False
 
         Returns:
             Region: a new Region object
@@ -546,18 +536,11 @@ class Region:
             else self.segments
         )
         segments = segments.copy()
-        segments = segments.sample(frac=1).reset_index(drop=True)  # TODO
 
-        gp = GeoParallel()
-        gen_vpolys = partial(
-            Region._gen_vpolys, buildings=buildings, **kwargs
-        )  # TODO pre-intersect buildings?
+        gp = GeoParallel(n_workers=n_workers, prog_bar=prog_bar)
+        gen_vpolys = partial(_gen_vpolys, buildings=buildings)
 
-        plots = gp.apply_chunked(
-            segments["geometry"],
-            gen_vpolys,
-            n_chunks=100,
-        )
+        plots = gp.apply_chunked(segments["geometry"], gen_vpolys, n_chunks=n_chunks)
 
         # plots = segments["geometry"].to_crs(buildings.proj_crs).apply(gen_vpolys)
 
@@ -637,3 +620,18 @@ class Region:
             bl = bl and other._plots and self._plots == other._plots
 
         return bl
+
+
+# Generate list of voronoi polygons for each segment
+# this function gets applied within add_pseudo_plots
+# note that this is done in the buildings' proj_crs
+# (which should be the regions proj_crs as well)
+# TODO make module-level, not static
+def _gen_vpolys(
+    boundary: shapely.Polygon,
+    buildings: Buildings,
+    **kwargs,
+) -> list[tuple]:
+    polys = buildings.create_voronoi_polygons(boundary=boundary, **kwargs)
+    polys = polys.to_list()
+    return polys
