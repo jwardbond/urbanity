@@ -5,10 +5,7 @@ updated on 2024/12/09. Updated from source 2024/12/09.
 """
 
 import itertools
-import logging
 import math
-import os
-import time
 import warnings
 
 import geopandas as gpd
@@ -17,14 +14,13 @@ import pandas as pd
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union, voronoi_diagram
 
-
-def setup_logger():
-    log_file = f"worker_{os.getpid()}.log"  # Each worker gets a separate log file
-    logging.basicConfig(
-        filename=log_file,
-        level=logging.INFO,
-        format="%(asctime)s [PID %(process)d] %(levelname)s: %(message)s",
-    )
+# def _setup_logger() -> None:
+#     log_file = f"worker_{os.getpid()}.log"  # Each worker gets a separate log file
+#     logging.basicConfig(
+#         filename=log_file,
+#         level=logging.INFO,
+#         format="%(asctime)s [PID %(process)d] %(levelname)s: %(message)s",
+#     )
 
 
 def valid_comparisons(pdict: dict) -> list[list[tuple]]:
@@ -135,7 +131,7 @@ def densify_polygon(gdf: gpd.GeoDataFrame, spacing="auto") -> gpd.GeoDataFrame: 
 
         gdf["geometry"] = ext_list.map(
             lambda x: Polygon(
-                _pnts_on_line_(np.array(x).reshape(-1, 2), spacing=spacing)
+                _pnts_on_line_(np.array(x).reshape(-1, 2), spacing=spacing),
             ),
         )
     except Exception as e:
@@ -159,43 +155,42 @@ def simplify_polygon(
         polys = [Polygon(p.exterior).buffer(0.01) for p in geom.geoms]
         polys = unary_union(polys).buffer(-0.01)
         return polys
-    elif isinstance(geom, Polygon):
+    elif isinstance(geom, Polygon):  # noqa: RET505
         return Polygon(geom.exterior)
     return None
 
 
-def vertex_count_in_limit(smp: MultiPolygon, max_vertices: int) -> bool:
+def _vertex_count_in_limit(smp: MultiPolygon, max_vertices: int) -> bool:
     polygons = list(smp.geoms) if isinstance(smp, MultiPolygon) else [smp]
     vertex_count = sum(len(poly.exterior.coords) for poly in polygons)
-    logging.info(f"Processing {vertex_count} vertices")
     return vertex_count <= max_vertices
 
 
-def input_warnings(gdf):
-    invalids = ~gdf["geometry"].is_valid
-    if sum(invalids) > 0:
-        warnings.warn(
-            "Invalid geometries encountered. Voronoi generation may fail.",
-            stacklevel=2,
-        )
+# TODO remove deprecated
+# def _input_warnings(gdf: gpd.GeoDataFrame):
+#     invalids = ~gdf["geometry"].is_valid
+#     if sum(invalids) > 0:
+#         warnings.warn(
+#             "Invalid geometries encountered. Voronoi generation may fail.",
+#             stacklevel=2,
+#         )
 
-    non_polys = ~(gdf["geometry"].geom_type == "Polygon")
-    if sum(non_polys) > 0:
-        others = list(gdf[non_polys]["geometry"].unique())
-        warnings.warn(
-            f"Non polygon geometries {others} encounted. Voronoi generation may fail."
-        )
+#     non_polys = ~(gdf["geometry"].geom_type == "Polygon")
+#     if sum(non_polys) > 0:
+#         others = list(gdf[non_polys]["geometry"].unique())
+#         warnings.warn(
+#             f"Non polygon geometries {others} encounted. Voronoi generation may fail.",
+#         )
 
-    empty = gdf["geometry"].is_empty
-    if sum(empty) > 0:
-        msg = "Empty polygons detected in input."
-        raise ValueError(msg)
+#     empty = gdf["geometry"].is_empty
+#     if sum(empty) > 0:
+#         msg = "Empty polygons detected in input."
+#         raise ValueError(msg)
 
 
 def voronoiDiagram4plg(  # noqa: N802
     gdf: gpd.GeoDataFrame,
     mask,  # noqa: ANN001
-    debuff: float | None = None,
     densify: bool = False,
     spacing="auto",  # noqa: ANN001
 ) -> gpd.GeoDataFrame:
@@ -212,11 +207,9 @@ def voronoiDiagram4plg(  # noqa: N802
     Returns:
         geopandas.GeoDataFrame: Thiessen polygons.
     """
-    gdf = gdf.copy()
-    setup_logger()
-
     # input validation
-    input_warnings(gdf)
+    # TODO remove deprecation
+    # _input_warnings(gdf)
 
     # densify
     if densify & (len(gdf) > 1):
@@ -227,19 +220,16 @@ def voronoiDiagram4plg(  # noqa: N802
     smp = gdf.unary_union
 
     # test for overly large inputs
-    if not vertex_count_in_limit(smp, 300000):
+    if not _vertex_count_in_limit(smp, 300000):
         warnings.warn(
             "More than 300 000 vertices detected after densification. Voronoi generation not performed",
             stacklevel=2,
         )
         gdf.geometry = [pd.NA] * len(gdf)
-        logging.info("\tCanceled")
         return gdf
 
     # create primary voronoi diagram by invoking shapely.ops.voronoi_diagram (new in Shapely 1.8.dev0)
-    start = time.time()
     smp_vd = voronoi_diagram(smp)
-    logging.info(f"\tVoronoi done {time.time() - start}")
 
     # convert to GeoSeries and explode to single polygons
     # note that it is NOT supported to GeoDataFrame directly
@@ -261,10 +251,7 @@ def voronoiDiagram4plg(  # noqa: N802
     gdf_temp = gpd.sjoin(gdf, gdf_vd_primary, how="inner", predicate="intersects")
     gdf_temp["geometry"] = gdf_temp["saved_geom"]
     gdf_temp = gdf_temp.drop(columns=["saved_geom", "index_right"])
-
-    start = time.time()
     gdf_temp = gdf_temp.dissolve(level=0).reset_index()
-    logging.info(f"\tDissolve done {time.time() - start}")
 
     gdf_vd = gpd.clip(gdf_temp, mask)
     gdf_vd["geometry"] = gdf_vd["geometry"].map(simplify_polygon)
