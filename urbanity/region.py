@@ -15,12 +15,15 @@ from .buildings import Buildings
 from .geoparallel import GeoParallel
 from .plots import Plots
 
-# TODO add saving
 # TODO add adjacency attribute
 # TODO clarify docstring for returning Self / obj
 # TODO Add crs checking in init
 # TODO make returning more sensible, will require figuring out correct copy logic
 # TODO there is some real fucky copying stuff happening here
+# TODO make static methods into module_level methods
+# TODO segments, buildings, polygons, should all have the same parent class
+# TODO change how areas are set to get rid of deprecation error (see ex. in Plots)
+# TODO make sure index is handled consistently
 
 
 class Region:

@@ -10,7 +10,7 @@ import geopandas as gpd
 import shapely
 from geopandas.testing import assert_geodataframe_equal
 
-from urbanity import Plots
+from urbanity.plots import Plots
 
 os.environ["GDAL_DATA"] = os.path.join(
     f"{os.sep}".join(sys.executable.split(os.sep)[:-1]),
@@ -20,7 +20,7 @@ os.environ["GDAL_DATA"] = os.path.join(
 )  # HACK GDAL warning suppression
 
 
-class TestPlots(unittest.TestCase):
+class TestPlotsInit(unittest.TestCase):
     def setUp(self):
         warnings.simplefilter(
             "ignore",
@@ -73,3 +73,72 @@ class TestPlots(unittest.TestCase):
 
         # Data should be unchanged
         assert_geodataframe_equal(loaded.data, plots.data, check_like=True)
+
+
+class TestCreateCircleFitFlag(unittest.TestCase):
+    def setUp(self):
+        warnings.simplefilter(
+            "ignore",
+            category=DeprecationWarning,
+        )  # HACK geopandas warning suppress
+
+        # Create test polygons
+        square = shapely.Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])  # can fit rad 5
+        small_triangle = shapely.Polygon([(0, 0), (1, 0), (0, 1)])  # can fit
+        point = shapely.Point(0, 0)
+
+        # Define coordinates for the non-convex geometry
+        large_square = shapely.Polygon(
+            [(0, 0), (10, 0), (10, 11), (0, 10), (0, 0)],
+        )  # A (slightly skewed but >) 10x10 square
+        small_square = shapely.Polygon(
+            [(7, 1), (9, 1), (9, 3), (7, 3), (7, 1)],
+        )  # 2x2 square
+        connector = shapely.Polygon(
+            [(5, 2), (7, 2), (7, 3), (5, 3), (5, 2)],
+        )  # Connecting rectangle
+        non_convex = shapely.ops.unary_union([large_square, small_square, connector])
+
+        # Create geodataframe with test geometries
+        self.test_data = gpd.GeoDataFrame(
+            geometry=[square, small_triangle, non_convex, point],
+            crs="EPSG:3347",
+        )
+        self.plots = Plots(data=self.test_data, proj_crs="EPSG:3347")
+
+    def test_create_circle_fit_flag_positive_cases(self):
+        radius = 4.0
+        tolerance = 0.001
+        result = self.plots.create_circle_fit_flag(
+            radius=radius,
+            tolerance=tolerance,
+            flag_name="can_fit",
+        )
+
+        # Square should fit circle with radius 4
+        self.assertTrue(result.data.loc[0]["can_fit"])
+
+        # Concave polygon should fit circle with radius 4
+        self.assertTrue(result.data.loc[2]["can_fit"])
+
+    def test_create_circle_fit_flag_negative_cases(self):
+        radius = 4.0
+        tolerance = 0.1
+        result = self.plots.create_circle_fit_flag(
+            radius=radius,
+            tolerance=tolerance,
+            flag_name="can_fit",
+        )
+
+        # Small triangle shouldn't fit circle with radius 4
+        self.assertFalse(result.data.loc[1]["can_fit"])
+
+        # Point geometry shouldn't fit any circle
+        self.assertFalse(result.data.loc[3]["can_fit"])
+
+    def test_raises_radius_error(self):
+        self.assertRaises(ValueError, self.plots.create_circle_fit_flag, radius=0)
+
+
+if __name__ == "__main__":
+    unittest.main()
