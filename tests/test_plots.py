@@ -75,6 +75,35 @@ class TestPlotsInit(unittest.TestCase):
         assert_geodataframe_equal(loaded.data, plots.data, check_like=True)
 
 
+class TestSubtractPolygons(unittest.TestCase):
+    def setUp(self):
+        # Create sample plot data
+        plot_geom = shapely.Polygon([(0, 0), (2, 0), (2, 2), (0, 2)])  # A=4.0
+        plot_data = gpd.GeoDataFrame({"geometry": [plot_geom]}, crs="EPSG:3347")
+        self.plots = Plots(data=plot_data, proj_crs="EPSG:3347")
+
+    def test_subtract_polygons_with_matching_crs(self):
+        # Create polygon to subtract
+        subtract_geom = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])  # A=1.0
+        to_subtract = gpd.GeoDataFrame({"geometry": [subtract_geom]}, crs="EPSG:3347")
+        to_subtract = to_subtract.to_crs("EPSG:4326")
+
+        result = self.plots.subtract_polygons(to_subtract)
+
+        # Check result has correct area
+        expected_area = 3.0  # Original area (4.0) - subtracted area (1.0)
+        self.assertAlmostEqual(result.data["area"].sum(), expected_area)
+
+    def test_subtract_polygons_with_different_crs(self):
+        subtract_geom = shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])  # A=1.0
+        to_subtract = gpd.GeoDataFrame({"geometry": [subtract_geom]}, crs="EPSG:3347")
+
+        with self.assertWarns(UserWarning):
+            result = self.plots.subtract_polygons(to_subtract)
+
+        self.assertEqual(result.data.crs, "EPSG:4326")
+
+
 class TestCreateCircleFitFlag(unittest.TestCase):
     def setUp(self):
         warnings.simplefilter(

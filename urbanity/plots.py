@@ -2,12 +2,12 @@
 
 import math
 import pathlib
+import warnings
 from functools import reduce
 from typing import Self
 
 import geopandas as gpd
 import pandas as pd
-import shapely
 from shapely.constructive import maximum_inscribed_circle
 
 import utils
@@ -70,6 +70,29 @@ class Plots:
 
         return Plots(data=data, proj_crs=proj_crs)
 
+    @classmethod
+    def create(cls, data: gpd.GeoDataFrame | pathlib.PurePath, proj_crs: str) -> Self:
+        """Create a Plots object from a geodataframe of land plots.
+
+        TODO decide what cleaning methods are needed
+        Args:
+            data (gpd.GeoDataFrame): A geodataframe of land plots. Will get converted to EPSG:4326
+            proj_crs (str): The crs to use when working with projected geometries. Must be a value acceptable by https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input
+
+        Returns:
+            Self: An instance of Plots
+        """
+        if not isinstance(data, gpd.GeoDataFrame):  # TODO test coverage
+            try:
+                utils.load_geodf(data)
+            except:  # noqa: E722
+                msg = "Must be created from a geodataframe, or a path to a parquet file that can be loaded into such."
+                raise ValueError(msg) from None
+
+        data = data.copy()
+
+        return Plots(data=data, proj_crs=proj_crs)
+
     # ****************
     # METHODS
     # ****************
@@ -90,8 +113,17 @@ class Plots:
         # Parse inputs
         data = self.data.copy()
 
+        if polygons.crs != "EPSG:4326":
+            warnings.warn(
+                "Input data not in EPSG:4326. Attempting to convert.",
+                stacklevel=2,
+            )
+            polygons = polygons.to_crs("EPSG:4326")
+
         # Get set difference
         data = data.overlay(polygons, how="difference")
+
+        # Need to recalculate area
         data["area"] = data.to_crs(self.proj_crs).area
 
         return Plots(data=data, proj_crs=self.proj_crs)
@@ -139,7 +171,7 @@ class Plots:
         )
         mic_rads = mic_gs.length
         mic_rads = mic_rads.fillna(-1.0)
-        remaining[flag_name] = mic_rads > radius + tolerance
+        remaining[flag_name] = mic_rads > radius
 
         # Reform data
         data = pd.concat([pre_processed, remaining], ignore_index=True)
