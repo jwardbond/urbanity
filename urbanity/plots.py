@@ -100,7 +100,7 @@ class Plots:
         self,
         polygons: gpd.GeoDataFrame,
     ) -> Self:
-        """Subtracts polygons from plots.
+        """Subtract polygons from plots.
 
         This is basically a wrapper for geopandas overlay diff.
 

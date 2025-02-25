@@ -29,6 +29,9 @@ class Buildings:
         proj_crs (str): The crs to use when working in projected systems. Must be a value acceptable by https://pyproj4.github.io/pyproj/stable/api/crs/crs.html#pyproj.crs.CRS.from_user_input
     """
 
+    # ****************
+    # CONSTRUCTION
+    # ****************
     def __init__(self, data: gpd.GeoDataFrame, proj_crs: str):
         """Initialize Buildings object.
 
@@ -116,29 +119,9 @@ class Buildings:
 
         return Buildings(data=data, proj_crs=proj_crs)
 
-    def save(self, save_folder: pathlib.PurePath) -> None:
-        """Saves building data.
-
-        Args:
-            save_folder (pathlib.PurePath): Save folder location
-        """
-        save_folder.mkdir(parents=True)
-        data = self.data
-        utils.save_geodf(data, save_folder / "buildings")
-
-    def __eq__(self, other: Self) -> bool:
-        bl = self.data.equals(other.data)
-        bl = bl and self.proj_crs == other.proj_crs
-
-        return bl
-
-    def copy(self, deep: bool = True) -> Self:
-        """Returns a deepcopy by default to be consistent with pandas behaviour."""
-        data = self.data.copy() if deep else self.data
-        proj_crs = self.proj_crs
-
-        return Buildings(data=data, proj_crs=proj_crs)
-
+    # ****************
+    # METHODS
+    # ****************
     def calc_floors(
         self,
         floor_height: float = 2.75,
@@ -268,7 +251,7 @@ class Buildings:
         """
         data = self.data.copy()
         other = other.copy()
-        original_geom = data[["id", "geometry"]]
+        original_geoms = data[["id", "geometry"]]
 
         data = data.to_crs(self.proj_crs)
         other = other.to_crs(self.proj_crs)
@@ -276,8 +259,8 @@ class Buildings:
         new_data = utils.sjoin_greatest_intersection(data, other, cols)
 
         new_data = new_data.drop("geometry", axis=1)
-        new_data = original_geom.merge(new_data, on="id", how="inner")
-        new_data.crs = original_geom.crs
+        new_data = original_geoms.merge(new_data, on="id", how="inner")
+        new_data.crs = original_geoms.crs
 
         return Buildings(new_data, self.proj_crs)
 
@@ -287,7 +270,13 @@ class Buildings:
         join_nearest: bool = False,
         max_distance: float = 5.0,
     ) -> Self:
-        """.
+        """Spatial join building data with address (point) data.
+
+        Join Buildings.data with a dataframe containing addresses (as point geometries). The default behaviour
+        is to only join addresses contained within building polygons, but this can be extended to join address data
+        with the *nearest* building polygon.
+
+        Join is done in Buildings.proj_crs.
 
         Args:
             ad_df (gpd.GeoDataFrame): Adress dataframe containing *at least* point geometries for addresses
@@ -452,6 +441,32 @@ class Buildings:
         vd = vd["geometry"]
 
         return vd
+
+    # ****************
+    # UTILTIES
+    # ****************
+    def save(self, save_folder: pathlib.PurePath) -> None:
+        """Saves building data.
+
+        Args:
+            save_folder (pathlib.PurePath): Save folder location
+        """
+        save_folder.mkdir(parents=True)
+        data = self.data
+        utils.save_geodf(data, save_folder / "buildings")
+
+    def __eq__(self, other: Self) -> bool:
+        bl = self.data.equals(other.data)
+        bl = bl and self.proj_crs == other.proj_crs
+
+        return bl
+
+    def copy(self, deep: bool = True) -> Self:
+        """Returns a deepcopy by default to be consistent with pandas behaviour."""
+        data = self.data.copy() if deep else self.data
+        proj_crs = self.proj_crs
+
+        return Buildings(data=data, proj_crs=proj_crs)
 
 
 def _dissolve_overlaps(bd: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
