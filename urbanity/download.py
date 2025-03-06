@@ -1,11 +1,9 @@
 import os
+import json
 import tempfile
-import warnings
 from pathlib import PurePath
 
 import geopandas as gpd
-
-# The following imports are all for microsoft building footprints
 import mercantile
 import numpy as np
 import osmnx as ox
@@ -15,7 +13,6 @@ import shapely
 import utils
 
 # TODO Handle missing boundaries (download square box)
-# TODO rewrite with caleb's code
 
 
 def download_osm_boundary(
@@ -94,57 +91,38 @@ def download_osm_network(
 
 
 def download_osm_buildings(
-    boundary: PurePath | shapely.Polygon,
+    geom: shapely.Polygon | PurePath,
     savefolder: PurePath | None = None,
-) -> gpd.GeoDataFrame:
-    """Download the building polygons from open street maps within some polygon boundary.
-
-    The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>`.
+):
+    """Searches OSM database and returns OSM building footprints for the AOI.
 
     Args:
-        boundary (PurePath, shapely.Polygon): The path to the saved boundary, or the boundary as a shapely polygon.
-        savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
+        geom (Polyhon, PurePath): Shapely geom for aoi
 
     Returns:
-        buildings (geopandas.GeoDataframe): A geodataframe of all buildings within the provided boundary in WGS84 / EPSG:4326
+        buildings (geopandas dataframe): Set of polygons found for the aoi
     """
-    # Parse polygon if required
-    boundary = _parse_polygon(boundary)
+    geom = _parse_polygon(geom)
 
-    # Get buildings polygons from OSM
-    print("Downloading buildings from OSM...", end=" ")
-    with warnings.catch_warnings():  # HACK geopandas warning suppression
-        warnings.simplefilter("ignore")
-        buildings = ox.features_from_polygon(boundary, tags={"building": True})
+    # Download
+    print("Downloading building footprints from OSM...", end=" ")
+    try:
+        # Query OSM for buildings and clip to AOI
+        buildings = ox.features_from_polygon(geom.envelope, tags={"building": True})
+        buildings = (
+            buildings.clip(geom)
+            .reset_index()
+            .loc[lambda df: df["geometry"].geom_type != "Point"]
+        )
+    except Exception:  # noqa: BLE001
+        print(utils.PrintColors.FAIL + "No fooprints" + utils.PrintColors.ENDC)
+        return None
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
-    # Remove any point geometries
-    buildings = buildings[buildings["geometry"].geom_type != "Point"]
+    # Add ID column and return simplified dataframe
+    buildings = buildings[["geometry"]]
+    buildings.insert(0, "id", buildings.index)
 
-    # Correctly format output
-    buildings = buildings.reset_index()
-    buildings.index = buildings.index.astype(np.int64)
-    buildings.osmid = buildings.osmid.astype(np.int32)
-
-    # The next two lines of code are rather needlessly complicated and just
-    # select only desired columns from the gdf, while allowing for the condition
-    # that one or more of the desired columns might not exist. It then makes sure
-    # the columns are in the correct order
-    filt = [
-        "osmid",
-        "addr:housenumber",
-        "addr:street",
-        "addr:unit",
-        "addr:postcode",
-        "geometry",
-    ]
-    buildings = buildings[
-        sorted(buildings.columns.intersection(filt), key=lambda x: filt.index(x))
-    ]
-
-    buildings.insert(loc=0, column="id", value=buildings.index)
-
-    # Save and return
     if savefolder:
         savepath = savefolder / (savefolder.stem + "_osm_buildings")
         utils.save_geodf_with_prompt(buildings, savepath)
@@ -153,62 +131,40 @@ def download_osm_buildings(
 
 
 def download_osm_generic(
-    boundary: PurePath | shapely.Polygon,
+    boundary: shapely.Polygon | PurePath,
     tags: dict,
     savefolder: PurePath | None = None,
     savename: str = "custom",
 ) -> gpd.GeoDataFrame:
-    """Download generic features from OSMwithin some polygon boundary.
-
-    The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>`.
+    """Searches OSM database and returns OSM building footprints for the AOI.
 
     Args:
-        boundary (PurePath, shapely.Polygon): The path to the saved boundary polygon, or the polygon itself.
-        tags (dict): A dict of tag-value combinations. See `here <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>` for more details on format.
-        savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
-        savename (str): name to append to saved geojson
+        geom (Polyhon, PurePath): Shapely geom for aoi
 
     Returns:
-        geopandas.GeoDataframe: A geodataframe of all features within the provided boundary in WGS84 / EPSG:4326
+        buildings (geopandas dataframe): Set of polygons found for the aoi
     """
-    # Parse polygon if required
     boundary = _parse_polygon(boundary)
 
-    # Download from osm
     print(f"Downloading {tags} from OSM...", end=" ")
-
-    with warnings.catch_warnings():  # HACK geopandas warning suppression
-        warnings.simplefilter("ignore")
-        gdf = ox.features_from_polygon(boundary, tags=tags)
-
+    try:
+        # Query OSM for buildings and clip to AOI
+        downloaded = ox.features_from_polygon(boundary.envelope, tags=tags)
+        downloaded = downloaded.clip(boundary).reset_index()
+    except Exception:  # noqa: BLE001
+        print(utils.PrintColors.FAIL + "No Geometries" + utils.PrintColors.ENDC)
+        return None
     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
 
-    # Remove any point geometries
-    gdf = gdf[gdf["geometry"].geom_type != "Point"]
+    # Add ID column and return simplified dataframe
+    downloaded = downloaded[["geometry"]]
+    downloaded.insert(0, "id", downloaded.index)
 
-    # Output formatting
-    gdf = gdf.reset_index()
-    gdf.index = gdf.index.astype(np.int64)
-
-    # TODO prune columns
-    filt = [
-        "osmid",
-        "addr:housenumber",
-        "addr:street",
-        "addr:unit",
-        "addr:postcode",
-        "geometry",
-    ]
-    gdf = gdf[sorted(gdf.columns.intersection(filt), key=lambda x: filt.index(x))]
-
-    gdf.insert(loc=0, column="id", value=gdf.index)
-
-    # Save and return
     if savefolder:
         savepath = savefolder / (savefolder.stem + f"_osm_{savename}")
-        utils.save_geodf_with_prompt(gdf, savepath)
+        utils.save_geodf_with_prompt(downloaded, savepath)
 
-    return gdf
+    return downloaded
 
 
 def download_ms_buildings(
@@ -276,16 +232,15 @@ def download_ms_buildings(
             gdf["id"] = range(idx, idx + len(gdf))  # Update 'id' based on idx
             idx += len(gdf)
             buildings = pd.concat([buildings, gdf], ignore_index=True)
+  
+    # Extract height and confidence from properties
+    buildings["properties"] = buildings["properties"].apply(json.loads)
+    buildings["height"] = buildings["properties"].apply(lambda x: x.get("height", None))
+    buildings["confidence"] = buildings["properties"].apply(lambda x: x.get("confidence", None))
 
     # Output formatting
-    # buildings = buildings.clip(boundary)
-    buildings.reset_index()
-    buildings.index = buildings.index.astype(np.int64)
-    buildings["height"] = buildings["properties"].apply(lambda x: x["height"])
-    buildings["confidence"] = buildings["properties"].apply(lambda x: x["confidence"])
-
     buildings = buildings[["type", "height", "confidence", "geometry"]]
-
+    buildings = buildings.reset_index()
     buildings.insert(loc=0, column="id", value=buildings.index)
 
     if savefolder:
@@ -306,6 +261,151 @@ def _parse_polygon(
         raise TypeError(msg)
 
     return polygon
+
+
+# def get_google_building_footprints(geom, country_iso):
+#     """Searches the Source Coop s3 buckets and returns Google footprints for the AOI.
+
+#     Source: https://beta.source.coop/repositories/cholmes/google-open-buildings/description
+
+#     Args:
+#         geom (polygon): Shapely geom for aoi
+#         country_iso (str): Country ISO string
+
+#     Returns:
+#         buildings (geopandas dataframe): Set of polygons found for the aoi
+#     """
+#     s3_path = f"s3://us-west-2.opendata.source.coop/google-research-open-buildings/v3/geoparquet-by-country/country_iso={country_iso}/{country_iso}.parquet"
+#     s3 = s3fs.S3FileSystem(anon=True)
+#     try:
+#         all_buildings = pq.ParquetDataset(s3_path, filesystem=s3).read().to_pandas()
+#     except Exception as err:
+#         print(f"No footprints for {err}")
+#         return None
+#     all_buildings.geometry = all_buildings.geometry.apply(
+#         lambda x: shapely.wkb.loads(x)
+#     )
+#     all_buildings = gpd.GeoDataFrame(all_buildings, geometry=all_buildings.geometry)
+#     buildings = all_buildings.clip(geom)
+#     return buildings
+
+
+# ***************************************
+# DEPRECATED
+# ***************************************
+
+# def download_osm_buildings(
+#     boundary: PurePath | shapely.Polygon,
+#     savefolder: PurePath | None = None,
+# ) -> gpd.GeoDataFrame:
+#     """Download the building polygons from open street maps within some polygon boundary.
+
+#     The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>`.
+
+#     Args:
+#         boundary (PurePath, shapely.Polygon): The path to the saved boundary, or the boundary as a shapely polygon.
+#         savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
+
+#     Returns:
+#         buildings (geopandas.GeoDataframe): A geodataframe of all buildings within the provided boundary in WGS84 / EPSG:4326
+#     """
+#     # Parse polygon if required
+#     boundary = _parse_polygon(boundary)
+
+#     # Get buildings polygons from OSM
+#     print("Downloading buildings from OSM...", end=" ")
+#     with warnings.catch_warnings():  # HACK geopandas warning suppression
+#         warnings.simplefilter("ignore")
+#         buildings = ox.features_from_polygon(boundary, tags={"building": True})
+#     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
+
+#     # Correctly format output
+#     buildings = buildings.reset_index()
+#     buildings.index = buildings.index.astype(np.int64)
+
+#     # The next two lines of code are rather needlessly complicated and just
+#     # select only desired columns from the gdf, while allowing for the condition
+#     # that one or more of the desired columns might not exist. It then makes sure
+#     # the columns are in the correct order
+#     filt = [
+#         "osmid",
+#         "addr:housenumber",
+#         "addr:street",
+#         "addr:unit",
+#         "addr:postcode",
+#         "geometry",
+#     ]
+#     buildings = buildings[
+#         sorted(buildings.columns.intersection(filt), key=lambda x: filt.index(x))
+#     ]
+
+#     buildings.insert(loc=0, column="id", value=buildings.index)
+
+#     # Save and return
+#     if savefolder:
+#         savepath = savefolder / (savefolder.stem + "_osm_buildings")
+#         utils.save_geodf_with_prompt(buildings, savepath)
+
+#     return buildings
+
+
+# def download_osm_generic(
+#     boundary: PurePath | shapely.Polygon,
+#     tags: dict,
+#     savefolder: PurePath | None = None,
+#     savename: str = "custom",
+# ) -> gpd.GeoDataFrame:
+#     """Download generic features from OSMwithin some polygon boundary.
+
+#     The coordinate system is WGS84 / EPSG:4326. For more information see `the osmnx docs <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>`.
+
+#     Args:
+#         boundary (PurePath, shapely.Polygon): The path to the saved boundary polygon, or the polygon itself.
+#         tags (dict): A dict of tag-value combinations. See `here <https://osmnx.readthedocs.io/en/stable/user-reference.html#osmnx.features.features_from_polygon>` for more details on format.
+#         savefolder (pathlib.PurePath, optional): Save location for downloaded polygons. Defaults to None (not saving)
+#         savename (str): name to append to saved geojson
+
+#     Returns:
+#         geopandas.GeoDataframe: A geodataframe of all features within the provided boundary in WGS84 / EPSG:4326
+#     """
+#     # Parse polygon if required
+#     boundary = _parse_polygon(boundary)
+
+#     # Download from osm
+#     print(f"Downloading {tags} from OSM...", end=" ")
+
+#     with warnings.catch_warnings():  # HACK geopandas warning suppression
+#         warnings.simplefilter("ignore")
+#         gdf = ox.features_from_polygon(boundary, tags=tags)
+
+#     print(utils.PrintColors.OKGREEN + "Done" + utils.PrintColors.ENDC)
+
+#     # Remove any point geometries
+#     gdf = gdf[gdf["geometry"].geom_type != "Point"]
+
+#     # Output formatting
+#     gdf = gdf.reset_index()
+#     gdf.index = gdf.index.astype(np.int64)
+
+#     # TODO prune columns
+#     filt = [
+#         "osmid",
+#         "addr:housenumber",
+#         "addr:street",
+#         "addr:unit",
+#         "addr:postcode",
+#         "geometry",
+#     ]
+#     gdf = gdf[sorted(gdf.columns.intersection(filt), key=lambda x: filt.index(x))]
+
+#     gdf.insert(loc=0, column="id", value=gdf.index)
+
+#     # Save and return
+#     if savefolder:
+#         savepath = savefolder / (savefolder.stem + f"_osm_{savename}")
+#         utils.save_geodf_with_prompt(gdf, savepath)
+
+#     return gdf
 
 
 if __name__ == "__main__":
