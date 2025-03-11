@@ -93,7 +93,7 @@ def download_osm_network(
 def download_osm_buildings(
     geom: shapely.Polygon | PurePath,
     savefolder: PurePath | None = None,
-):
+) -> gpd.GeoDataFrame:
     """Searches OSM database and returns OSM building footprints for the AOI.
 
     Args:
@@ -150,7 +150,11 @@ def download_osm_generic(
     try:
         # Query OSM for buildings and clip to AOI
         downloaded = ox.features_from_polygon(boundary.envelope, tags=tags)
-        downloaded = downloaded.clip(boundary).reset_index()
+        downloaded = (
+            downloaded.clip(boundary)
+            .reset_index()
+            .loc[lambda df: df["geometry"].geom_type != "Point"]
+        )
     except Exception:  # noqa: BLE001
         print(utils.PrintColors.FAIL + "No Geometries" + utils.PrintColors.ENDC)
         return None
@@ -232,11 +236,13 @@ def download_ms_buildings(
             gdf["id"] = range(idx, idx + len(gdf))  # Update 'id' based on idx
             idx += len(gdf)
             buildings = pd.concat([buildings, gdf], ignore_index=True)
-  
+
     # Extract height and confidence from properties
     buildings["properties"] = buildings["properties"].apply(json.loads)
     buildings["height"] = buildings["properties"].apply(lambda x: x.get("height", None))
-    buildings["confidence"] = buildings["properties"].apply(lambda x: x.get("confidence", None))
+    buildings["confidence"] = buildings["properties"].apply(
+        lambda x: x.get("confidence", None)
+    )
 
     # Output formatting
     buildings = buildings[["type", "height", "confidence", "geometry"]]
